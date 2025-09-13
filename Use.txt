@@ -1,0 +1,83 @@
+RawrZ Security Platform - Standalone CLI
+=========================================
+
+72+ Total Commands Available
+
+CORE CRYPTO COMMANDS:
+encrypt <algorithm> <input> [extension] - Encrypt data or file
+decrypt <algorithm> <input> [key] [extension] - Decrypt data or file
+hash <input> [algorithm] [save] [extension] - Generate hash
+keygen <algorithm> [length] [save] [extension] - Generate encryption key
+advancedcrypto <input> [operation] - Advanced crypto operations
+sign <input> [privatekey] - Sign data with RSA
+verify <input> <signature> <publickey> - Verify digital signature
+
+ENCODING COMMANDS:
+base64encode <input> - Base64 encode data
+base64decode <input> - Base64 decode data
+hexencode <input> - Hexadecimal encode data
+hexdecode <input> - Hexadecimal decode data
+urlencode <input> - URL encode string
+urldecode <input> - URL decode string
+
+RANDOM GENERATION COMMANDS:
+random [length] - Generate random bytes
+uuid - Generate UUID
+password [length] [special] - Generate secure password
+
+ANALYSIS COMMANDS:
+analyze <input> - Analyze file (type, entropy, hashes)
+sysinfo - System information
+processes - List running processes
+
+NETWORK COMMANDS:
+ping <host> [save] [extension] - Ping host
+dns <hostname> - DNS lookup
+portscan <host> [startport] [endport] - Port scan
+traceroute <host> - Trace network route
+whois <domain> - WHOIS domain lookup
+
+FILE OPERATION COMMANDS:
+files - List files in uploads directory
+upload <url> - Download file from URL
+fileops <operation> <input> [output] - File operations
+  Operations: copy, move, delete, info
+
+TEXT OPERATION COMMANDS:
+textops <operation> <input> - Text manipulation
+  Operations: uppercase, lowercase, reverse, wordcount, charcount
+
+VALIDATION COMMANDS:
+validate <input> <type> - Validate data
+  Types: email, url, ip, json
+
+UTILITY COMMANDS:
+time - Get current time information
+math <expression> - Mathematical operations
+help - Show this help
+
+EXAMPLES:
+node rawrz-standalone.js encrypt aes256 C:\Windows\calc.exe .exe
+node rawrz-standalone.js analyze C:\Windows\calc.exe
+node rawrz-standalone.js portscan google.com 80 443
+node rawrz-standalone.js base64encode "Hello World"
+node rawrz-standalone.js validate user@example.com email
+node rawrz-standalone.js textops uppercase "hello world"
+node rawrz-standalone.js math "2 + 2 * 3"
+
+FILE INPUT TYPES:
+URLs: https://example.com/file
+Local: file:name.txt
+Absolute: C:\path\file.txt
+Home: ~/file.txt
+
+CUSTOM EXTENSIONS:
+Encryption: .exe, .enc, .bin, .dat
+Hashes: .hash, .txt, .json
+Keys: .key, .pem, .txt
+Network: .ping, .txt, .log
+
+USAGE:
+Direct: node rawrz-standalone.js <command> [arguments]
+Batch: .\rawrz-standalone.bat <command> [arguments]
+NPM: npm start, npm run help, npm test
