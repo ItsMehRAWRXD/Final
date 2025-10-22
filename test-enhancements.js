@@ -137,6 +137,7 @@ class EnhancementTester {
             algorithm: 'aes-256-gcm',
             key: encrypted.key,
             iv: encrypted.iv,
+            authTag: encrypted.authTag,
             dataType: 'text'
         });
         
