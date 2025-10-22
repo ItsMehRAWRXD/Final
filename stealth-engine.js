@@ -4,7 +4,7 @@ const fs = require('fs').promises;
 const { exec } = require('child_process');
 const { promisify } = require('util');
 const crypto = require('crypto');
-const { logger } = require('../utils/logger');
+const { logger } = require('./utils/logger');
 
 const execAsync = promisify(exec);
 

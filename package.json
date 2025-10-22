@@ -6,7 +6,18 @@
   "scripts": {
     "start": "node rawrz-standalone.js",
     "help": "node rawrz-standalone.js help",
-    "test": "node rawrz-standalone.js sysinfo"
+    "test": "node rawrz-standalone.js sysinfo",
+    "test:all": "node rawrz-standalone.js sysinfo && node rawrz-standalone.js processes && node rawrz-standalone.js files",
+    "encrypt": "node rawrz-standalone.js encrypt",
+    "decrypt": "node rawrz-standalone.js decrypt",
+    "hash": "node rawrz-standalone.js hash",
+    "analyze": "node rawrz-standalone.js analyze",
+    "network": "node rawrz-standalone.js portscan",
+    "validate": "node rawrz-standalone.js validate",
+    "lint": "echo 'No linter configured'",
+    "audit": "npm audit",
+    "update": "npm update",
+    "clean": "rm -rf uploads/* data/* logs/*"
   },
   "dependencies": {
     "crc32": "^0.2.2",

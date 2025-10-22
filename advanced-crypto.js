@@ -1,714 +1,523 @@
 // RawrZ Advanced Crypto - Advanced cryptographic systems
 const crypto = require('crypto');
-const { logger } = require('../utils/logger');
+const { logger } = require('./utils/logger');
 
 class AdvancedCrypto {
     constructor() {
-        this.algorithms = [
-            'aes-256-gcm', 'aes-192-gcm', 'aes-128-gcm',
-            'aes-256-cbc', 'aes-192-cbc', 'aes-128-cbc',
-            'camellia-256-cbc', 'camellia-192-cbc', 'camellia-128-cbc',
-            'camellia-256-ctr', 'camellia-192-ctr', 'camellia-128-ctr',
-            'aria-256-gcm', 'aria-192-gcm', 'aria-128-gcm',
-            'chacha20', 'rsa-4096'
-        ];
-        
-        // Algorithm name mapping for common variations
-        this.algorithmMap = {
-            // Camellia variations
-            'cam-256-cbc': 'camellia-256-cbc',
-            'cam-192-cbc': 'camellia-192-cbc',
-            'cam-128-cbc': 'camellia-128-cbc',
-            'cam-256-ctr': 'camellia-256-ctr',
-            'cam-192-ctr': 'camellia-192-ctr',
-            'cam-128-ctr': 'camellia-128-ctr',
-            'camellia-256-gcm': 'camellia-256-cbc', // GCM not supported, use CBC
-            'camellia-192-gcm': 'camellia-192-cbc',
-            'camellia-128-gcm': 'camellia-128-cbc',
-            'cam-256-gcm': 'camellia-256-cbc',
-            'cam-192-gcm': 'camellia-192-cbc',
-            'cam-128-gcm': 'camellia-128-cbc',
-            
-            // AES variations
-            'aes256gcm': 'aes-256-gcm',
-            'aes192gcm': 'aes-192-gcm',
-            'aes128gcm': 'aes-128-gcm',
-            'aes256cbc': 'aes-256-cbc',
-            'aes192cbc': 'aes-192-cbc',
-            'aes128cbc': 'aes-128-cbc',
-            'aes-256': 'aes-256-gcm',
-            'aes-192': 'aes-192-gcm',
-            'aes-128': 'aes-128-gcm',
-            
-            // ARIA variations
-            'aria256gcm': 'aria-256-gcm',
-            'aria192gcm': 'aria-192-gcm',
-            'aria128gcm': 'aria-128-gcm',
-            'aria-256': 'aria-256-gcm',
-            'aria-192': 'aria-192-gcm',
-            'aria-128': 'aria-128-gcm',
-            
-            // ChaCha20 variations
-            'chacha': 'chacha20',
-            'chacha20-poly1305': 'chacha20',
-            
-            // RSA variations
-            'rsa': 'rsa-4096',
-            'rsa4096': 'rsa-4096'
+        this.algorithms = {
+            'aes-256-gcm': { keyLength: 32, ivLength: 12, tagLength: 16 },
+            'aes-256-cbc': { keyLength: 32, ivLength: 16 },
+            'aes-192-gcm': { keyLength: 24, ivLength: 12, tagLength: 16 },
+            'aes-192-cbc': { keyLength: 24, ivLength: 16 },
+            'aes-128-gcm': { keyLength: 16, ivLength: 12, tagLength: 16 },
+            'aes-128-cbc': { keyLength: 16, ivLength: 16 },
+            'camellia-256-gcm': { keyLength: 32, ivLength: 12, tagLength: 16 },
+            'camellia-256-cbc': { keyLength: 32, ivLength: 16 },
+            'aria-256-gcm': { keyLength: 32, ivLength: 12, tagLength: 16 },
+            'aria-256-cbc': { keyLength: 32, ivLength: 16 },
+            'chacha20-poly1305': { keyLength: 32, ivLength: 12, tagLength: 16 }
         };
+        
+        this.supportedFormats = ['hex', 'base64', 'binary'];
+        this.compressionAlgorithms = ['gzip', 'deflate', 'brotli'];
+        this.obfuscationMethods = ['xor', 'rot13', 'base64', 'hex'];
     }
 
-    async initialize(config) {
-        this.config = config;
-        logger.info('Advanced Crypto initialized');
-    }
-
-    // Normalize algorithm name using mapping
-    normalizeAlgorithm(algorithm) {
-        const normalized = this.algorithmMap[algorithm.toLowerCase()];
-        if (normalized) {
-            if (process.env.DEBUG_CRYPTO === 'true') {
-                logger.info(`Algorithm normalized: ${algorithm} -> ${normalized}`);
+    // Generate secure random key
+    generateKey(algorithm = 'aes-256-gcm') {
+        try {
+            const algo = this.algorithms[algorithm];
+            if (!algo) {
+                throw new Error(`Unsupported algorithm: ${algorithm}`);
             }
-            return normalized;
+            
+            const key = crypto.randomBytes(algo.keyLength);
+            logger.info('Key generated', { algorithm, keyLength: algo.keyLength });
+            return key;
+        } catch (error) {
+            logger.error('Key generation failed', { algorithm, error: error.message });
+            throw error;
         }
-        return algorithm;
     }
 
-    // Get key and IV sizes for different algorithms
-    getKeyAndIVSizes(algorithm) {
-        const sizes = {
-            // AES algorithms
-            'aes-128-gcm': { keySize: 16, ivSize: 12 },
-            'aes-192-gcm': { keySize: 24, ivSize: 12 },
-            'aes-256-gcm': { keySize: 32, ivSize: 12 },
-            'aes-128-cbc': { keySize: 16, ivSize: 16 },
-            'aes-192-cbc': { keySize: 24, ivSize: 16 },
-            'aes-256-cbc': { keySize: 32, ivSize: 16 },
+    // Generate secure random IV
+    generateIV(algorithm = 'aes-256-gcm') {
+        try {
+            const algo = this.algorithms[algorithm];
+            if (!algo) {
+                throw new Error(`Unsupported algorithm: ${algorithm}`);
+            }
             
-            // Camellia algorithms
-            'camellia-128-cbc': { keySize: 16, ivSize: 16 },
-            'camellia-192-cbc': { keySize: 24, ivSize: 16 },
-            'camellia-256-cbc': { keySize: 32, ivSize: 16 },
-            'camellia-128-ctr': { keySize: 16, ivSize: 16 },
-            'camellia-192-ctr': { keySize: 24, ivSize: 16 },
-            'camellia-256-ctr': { keySize: 32, ivSize: 16 },
-            
-            // ARIA algorithms
-            'aria-128-gcm': { keySize: 16, ivSize: 12 },
-            'aria-192-gcm': { keySize: 24, ivSize: 12 },
-            'aria-256-gcm': { keySize: 32, ivSize: 12 },
-            
-            // ChaCha20
-            'chacha20': { keySize: 32, ivSize: 12 }
-        };
-        
-        return sizes[algorithm] || { keySize: 32, ivSize: 16 }; // Default to AES-256
+            const iv = crypto.randomBytes(algo.ivLength);
+            logger.info('IV generated', { algorithm, ivLength: algo.ivLength });
+            return iv;
+        } catch (error) {
+            logger.error('IV generation failed', { algorithm, error: error.message });
+            throw error;
+        }
     }
 
+    // Encrypt data with advanced options
     async encrypt(data, options = {}) {
-        const algorithm = this.normalizeAlgorithm(options.algorithm || 'aes-256-gcm');
-        const { keySize, ivSize } = this.getKeyAndIVSizes(algorithm);
-        const key = options.key ? Buffer.from(options.key, 'hex') : crypto.randomBytes(keySize);
-        const iv = options.iv ? Buffer.from(options.iv, 'hex') : crypto.randomBytes(ivSize);
-        
-        // Handle file extension preservation
-        const originalExtension = options.originalExtension || '';
-        const preserveExtension = options.preserveExtension !== false; // Default to true
-        
-        // Data options
-        const dataType = options.dataType || 'text';
-        const encoding = options.encoding || 'utf8';
-        const outputFormat = options.outputFormat || 'hex';
-        
-        // Extension options
-        const compression = options.compression || false;
-        const obfuscation = options.obfuscation || false;
-        const metadata = options.metadata || {};
-        
-        // File extension and format options
-        const targetExtension = options.targetExtension || null;
-        const preserveOriginalExtension = options.preserveOriginalExtension || false;
-        const stubFormat = options.stubFormat || null; // 'exe', 'dll', 'so', 'dylib'
-        const executableType = options.executableType || 'console'; // 'console', 'windows', 'service'
-        
-        let processedData = data;
-        
-        // Debug logging (reduced for memory optimization)
-        if (process.env.DEBUG_CRYPTO === 'true') {
-            console.log('[DEBUG] Advanced Crypto - Input data type:', typeof data);
-            console.log('[DEBUG] Advanced Crypto - Input data:', data);
-            console.log('[DEBUG] Advanced Crypto - Data type option:', dataType);
-        }
-        
-        // Handle different data types
-        if (dataType === 'buffer' && Buffer.isBuffer(data)) {
-            processedData = data;
-        } else if (dataType === 'base64') {
-            processedData = Buffer.from(data, 'base64');
-        } else if (dataType === 'hex') {
-            processedData = Buffer.from(data, 'hex');
-        } else {
-            // Ensure data is a string before converting to buffer
-            const dataStr = typeof data === 'string' ? data : JSON.stringify(data);
-            processedData = Buffer.from(dataStr, encoding);
-        }
-        
-        if (process.env.DEBUG_CRYPTO === 'true') {
-            console.log('[DEBUG] Advanced Crypto - Processed data type:', typeof processedData);
-            console.log('[DEBUG] Advanced Crypto - Processed data is buffer:', Buffer.isBuffer(processedData));
-        }
-        
-        // Apply compression if requested
-        if (compression) {
-            const zlib = require('zlib');
-            processedData = zlib.gzipSync(processedData);
-        }
-        
-        // Apply obfuscation if requested
-        if (obfuscation) {
-            processedData = this.obfuscateData(processedData);
-        }
-        
-        let encrypted;
-        let authTag;
+        const startTime = Date.now();
         
         try {
+            const {
+                algorithm = 'aes-256-gcm',
+                dataType = 'text',
+                encoding = 'utf8',
+                outputFormat = 'hex',
+                compression = null,
+                obfuscation = null,
+                targetExtension = '.enc',
+                stubFormat = 'csharp',
+                executableType = 'exe',
+                originalExtension = null,
+                preserveExtension = false
+            } = options;
+
+            // Validate algorithm
+            if (!this.algorithms[algorithm]) {
+                throw new Error(`Unsupported algorithm: ${algorithm}`);
+            }
+
+            // Prepare data
+            let dataToEncrypt;
+            if (dataType === 'text') {
+                dataToEncrypt = Buffer.from(data, encoding);
+            } else if (dataType === 'buffer') {
+                dataToEncrypt = Buffer.isBuffer(data) ? data : Buffer.from(data);
+            } else if (dataType === 'file') {
+                dataToEncrypt = await require('fs').promises.readFile(data);
+            } else {
+                throw new Error(`Unsupported data type: ${dataType}`);
+            }
+
+            // Apply compression if requested
+            if (compression && this.compressionAlgorithms.includes(compression)) {
+                const zlib = require('zlib');
+                const compress = zlib[compression === 'brotli' ? 'brotliCompress' : `${compression}Sync`];
+                dataToEncrypt = compress(dataToEncrypt);
+                logger.info('Data compressed', { algorithm: compression, originalSize: data.length, compressedSize: dataToEncrypt.length });
+            }
+
+            // Apply obfuscation if requested
+            if (obfuscation && this.obfuscationMethods.includes(obfuscation)) {
+                dataToEncrypt = this.applyObfuscation(dataToEncrypt, obfuscation);
+                logger.info('Data obfuscated', { method: obfuscation });
+            }
+
+            // Generate key and IV
+            const key = this.generateKey(algorithm);
+            const iv = this.generateIV(algorithm);
+
+            // Encrypt data
+            let encrypted;
+            let authTag;
+
             if (algorithm.includes('gcm')) {
                 const cipher = crypto.createCipheriv(algorithm, key, iv);
-                encrypted = cipher.update(processedData);
+                encrypted = cipher.update(dataToEncrypt);
                 encrypted = Buffer.concat([encrypted, cipher.final()]);
                 authTag = cipher.getAuthTag();
-            } else if (algorithm.includes('cbc') || algorithm.includes('ctr') || algorithm.includes('cfb') || algorithm.includes('ofb') || algorithm.includes('ecb')) {
+            } else if (algorithm.includes('cbc')) {
                 const cipher = crypto.createCipheriv(algorithm, key, iv);
-                encrypted = cipher.update(processedData);
+                encrypted = cipher.update(dataToEncrypt);
                 encrypted = Buffer.concat([encrypted, cipher.final()]);
-            } else if (algorithm === 'chacha20') {
-                const cipher = crypto.createCipheriv('chacha20-poly1305', key, iv);
-                encrypted = cipher.update(processedData);
+            } else if (algorithm === 'chacha20-poly1305') {
+                const cipher = crypto.createCipheriv(algorithm, key, iv);
+                encrypted = cipher.update(dataToEncrypt);
                 encrypted = Buffer.concat([encrypted, cipher.final()]);
                 authTag = cipher.getAuthTag();
             } else {
                 throw new Error(`Unsupported algorithm: ${algorithm}`);
             }
-        } catch (error) {
-            console.error(`[ERROR] Encryption failed with ${algorithm}:`, error.message);
-            // Fallback to AES-256-CBC if algorithm fails
-            const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
-            encrypted = cipher.update(processedData);
-            encrypted = Buffer.concat([encrypted, cipher.final()]);
-        }
-        
-        const result = {
-            type: 'encryption',
-            algorithm,
-            data: outputFormat === 'base64' ? encrypted.toString('base64') : encrypted.toString('hex'),
-            key: key.toString('hex'),
-            iv: iv.toString('hex'),
-            dataType,
-            encoding,
-            outputFormat,
-            compression,
-            obfuscation,
-            targetExtension,
-            stubFormat,
-            executableType,
-            originalExtension,
-            preserveExtension,
-            suggestedExtension: preserveExtension && originalExtension ? originalExtension + '.enc' : '.enc',
-            metadata: {
-                ...metadata,
-                timestamp: new Date().toISOString(),
-                size: processedData.length,
-                encryptedSize: encrypted.length
-            }
-        };
-        
-        if (authTag) {
-            result.authTag = authTag.toString('hex');
-        }
-        
-        // Generate extension change instructions if requested
-        if (targetExtension) {
-            result.extensionChange = this.generateExtensionChangeInstructions(targetExtension, preserveOriginalExtension);
-        }
-        
-        // Generate stub if requested
-        if (stubFormat) {
-            result.stub = await this.generateStub(encrypted, {
-                format: stubFormat,
-                executableType,
+
+            // Format output
+            const result = {
+                type: 'encryption',
                 algorithm,
+                data: outputFormat === 'base64' ? encrypted.toString('base64') : encrypted.toString('hex'),
                 key: key.toString('hex'),
                 iv: iv.toString('hex'),
-                authTag: authTag ? authTag.toString('hex') : null
-            });
-        }
-        
-        return result;
-    }
-    
-    obfuscateData(data) {
-        // Simple XOR obfuscation with rotating key
-        const obfuscated = Buffer.alloc(data.length);
-        const key = Buffer.from('RawrZ', 'utf8');
-        
-        for (let i = 0; i < data.length; i++) {
-            obfuscated[i] = data[i] ^ key[i % key.length];
-        }
-        
-        return obfuscated;
-    }
-    
-    async decrypt(encryptedData, options = {}) {
-        const algorithm = this.normalizeAlgorithm(options.algorithm || 'aes-256-gcm');
-        const key = Buffer.from(options.key, 'hex');
-        const iv = Buffer.from(options.iv, 'hex');
-        const authTag = options.authTag ? Buffer.from(options.authTag, 'hex') : null;
-        
-        const dataType = options.dataType || 'text';
-        const encoding = options.encoding || 'utf8';
-        const outputFormat = options.outputFormat || 'hex';
-        const compression = options.compression || false;
-        const obfuscation = options.obfuscation || false;
-        
-        let encrypted = Buffer.from(encryptedData, outputFormat === 'base64' ? 'base64' : 'hex');
-        
-        let decrypted;
-        
-        try {
-            if (algorithm.includes('gcm')) {
-                const decipher = crypto.createDecipherGCM(algorithm, key, iv);
-                if (authTag) decipher.setAuthTag(authTag);
-                decrypted = decipher.update(encrypted);
-                decrypted = Buffer.concat([decrypted, decipher.final()]);
-            } else if (algorithm.includes('cbc')) {
-                const decipher = crypto.createDecipher(algorithm, key, iv);
-                decrypted = decipher.update(encrypted);
-                decrypted = Buffer.concat([decrypted, decipher.final()]);
-            } else if (algorithm === 'chacha20') {
-                const decipher = crypto.createDecipher('chacha20-poly1305', key, iv);
-                if (authTag) decipher.setAuthTag(authTag);
-                decrypted = decipher.update(encrypted);
-                decrypted = Buffer.concat([decrypted, decipher.final()]);
-            } else {
-                throw new Error(`Unsupported algorithm: ${algorithm}`);
+                dataType,
+                encoding,
+                outputFormat,
+                compression,
+                obfuscation,
+                targetExtension,
+                stubFormat,
+                executableType,
+                originalExtension,
+                preserveExtension,
+                suggestedExtension: preserveExtension && originalExtension ? originalExtension + '.enc' : '.enc',
+                metadata: {
+                    timestamp: new Date().toISOString(),
+                    version: '2.0.0',
+                    platform: process.platform,
+                    nodeVersion: process.version
+                }
+            };
+
+            if (authTag) {
+                result.authTag = authTag.toString('hex');
             }
+
+            const duration = Date.now() - startTime;
+            logger.info('Encryption completed', { 
+                algorithm, 
+                dataSize: dataToEncrypt.length, 
+                encryptedSize: encrypted.length,
+                duration 
+            });
+
+            return result;
         } catch (error) {
-            // Fallback to AES-256-CBC
-            const decipher = crypto.createDecipher('aes-256-cbc', key, iv);
-            decrypted = decipher.update(encrypted);
-            decrypted = Buffer.concat([decrypted, decipher.final()]);
-        }
-        
-        // Reverse obfuscation if applied
-        if (obfuscation) {
-            decrypted = this.obfuscateData(decrypted);
-        }
-        
-        // Reverse compression if applied
-        if (compression) {
-            const zlib = require('zlib');
-            decrypted = zlib.gunzipSync(decrypted);
-        }
-        
-        // Convert to requested format
-        if (dataType === 'text') {
-            return decrypted.toString(encoding);
-        } else if (dataType === 'base64') {
-            return decrypted.toString('base64');
-        } else if (dataType === 'hex') {
-            return decrypted.toString('hex');
-        } else {
-            return decrypted;
+            logger.error('Encryption failed', { algorithm: options.algorithm, error: error.message });
+            throw error;
         }
     }
 
-    generateExtensionChangeInstructions(targetExtension, preserveOriginal) {
-        const instructions = {
-            targetExtension,
-            preserveOriginal,
-            steps: [],
-            commands: {},
-            warnings: []
-        };
+    // Decrypt data with advanced options
+    async decrypt(encryptedData, options = {}) {
+        const startTime = Date.now();
         
-        // Generate platform-specific instructions
-        if (process.platform === 'win32') {
-            instructions.steps = [
-                '1. Save encrypted data to a temporary file',
-                '2. Use built-in extension change utility',
-                '3. Verify file integrity after extension change'
-            ];
-            instructions.commands = {
-                rename: `ren "encrypted_file.tmp" "encrypted_file.${targetExtension}"`,
-                copy: `copy "encrypted_file.tmp" "encrypted_file.${targetExtension}"`,
-                verify: `certutil -hashfile "encrypted_file.${targetExtension}" SHA256`
+        try {
+            const {
+                algorithm = 'aes-256-gcm',
+                key,
+                iv,
+                authTag,
+                dataType = 'text',
+                encoding = 'utf8',
+                outputFormat = 'hex',
+                compression = null,
+                obfuscation = null
+            } = options;
+
+            if (!key || !iv) {
+                throw new Error('Key and IV are required for decryption');
+            }
+
+            // Convert inputs to buffers
+            const keyBuffer = Buffer.isBuffer(key) ? key : Buffer.from(key, 'hex');
+            const ivBuffer = Buffer.isBuffer(iv) ? iv : Buffer.from(iv, 'hex');
+            const authTagBuffer = authTag ? (Buffer.isBuffer(authTag) ? authTag : Buffer.from(authTag, 'hex')) : null;
+
+            // Parse encrypted data
+            let encrypted = Buffer.from(encryptedData, outputFormat === 'base64' ? 'base64' : 'hex');
+            
+            let decrypted;
+            
+            try {
+                if (algorithm.includes('gcm')) {
+                    const decipher = crypto.createDecipheriv(algorithm, keyBuffer, ivBuffer);
+                    if (authTagBuffer) decipher.setAuthTag(authTagBuffer);
+                    decrypted = decipher.update(encrypted);
+                    decrypted = Buffer.concat([decrypted, decipher.final()]);
+                } else if (algorithm.includes('cbc')) {
+                    const decipher = crypto.createDecipheriv(algorithm, keyBuffer, ivBuffer);
+                    decrypted = decipher.update(encrypted);
+                    decrypted = Buffer.concat([decrypted, decipher.final()]);
+                } else if (algorithm === 'chacha20-poly1305') {
+                    const decipher = crypto.createDecipheriv(algorithm, keyBuffer, ivBuffer);
+                    if (authTagBuffer) decipher.setAuthTag(authTagBuffer);
+                    decrypted = decipher.update(encrypted);
+                    decrypted = Buffer.concat([decrypted, decipher.final()]);
+                } else {
+                    throw new Error(`Unsupported algorithm: ${algorithm}`);
+                }
+            } catch (error) {
+                // Fallback to AES-256-CBC
+                const decipher = crypto.createDecipheriv('aes-256-cbc', keyBuffer, ivBuffer);
+                decrypted = decipher.update(encrypted);
+                decrypted = Buffer.concat([decrypted, decipher.final()]);
+            }
+
+            // Remove obfuscation if applied
+            if (obfuscation && this.obfuscationMethods.includes(obfuscation)) {
+                decrypted = this.removeObfuscation(decrypted, obfuscation);
+                logger.info('Data deobfuscated', { method: obfuscation });
+            }
+
+            // Decompress if compressed
+            if (compression && this.compressionAlgorithms.includes(compression)) {
+                const zlib = require('zlib');
+                const decompress = zlib[compression === 'brotli' ? 'brotliDecompress' : `${compression}Sync`];
+                decrypted = decompress(decrypted);
+                logger.info('Data decompressed', { algorithm: compression });
+            }
+
+            // Convert to requested format
+            let result;
+            if (dataType === 'text') {
+                result = decrypted.toString(encoding);
+            } else if (dataType === 'buffer') {
+                result = decrypted;
+            } else if (dataType === 'file') {
+                const fs = require('fs').promises;
+                const outputPath = options.outputPath || 'decrypted_output';
+                await fs.writeFile(outputPath, decrypted);
+                result = outputPath;
+            } else {
+                result = decrypted;
+            }
+
+            const duration = Date.now() - startTime;
+            logger.info('Decryption completed', { 
+                algorithm, 
+                encryptedSize: encrypted.length,
+                decryptedSize: decrypted.length,
+                duration 
+            });
+
+            return result;
+        } catch (error) {
+            logger.error('Decryption failed', { algorithm: options.algorithm, error: error.message });
+            throw error;
+        }
+    }
+
+    // Apply obfuscation
+    applyObfuscation(data, method) {
+        switch (method) {
+            case 'xor':
+                const xorKey = crypto.randomBytes(1)[0];
+                return Buffer.concat([Buffer.from([xorKey]), Buffer.from(data.map(b => b ^ xorKey))]);
+            case 'rot13':
+                return Buffer.from(data.toString().replace(/[a-zA-Z]/g, c => 
+                    String.fromCharCode(c.charCodeAt(0) + (c.toLowerCase() < 'n' ? 13 : -13))
+                ));
+            case 'base64':
+                return Buffer.from(data.toString('base64'));
+            case 'hex':
+                return Buffer.from(data.toString('hex'));
+            default:
+                return data;
+        }
+    }
+
+    // Remove obfuscation
+    removeObfuscation(data, method) {
+        switch (method) {
+            case 'xor':
+                const xorKey = data[0];
+                return Buffer.from(data.slice(1).map(b => b ^ xorKey));
+            case 'rot13':
+                return Buffer.from(data.toString().replace(/[a-zA-Z]/g, c => 
+                    String.fromCharCode(c.charCodeAt(0) + (c.toLowerCase() < 'n' ? 13 : -13))
+                ));
+            case 'base64':
+                return Buffer.from(data.toString(), 'base64');
+            case 'hex':
+                return Buffer.from(data.toString(), 'hex');
+            default:
+                return data;
+        }
+    }
+
+    // Generate decryption stub
+    async generateStub(encryptedData, options = {}) {
+        try {
+            const {
+                algorithm = 'aes-256-gcm',
+                key,
+                iv,
+                authTag,
+                stubFormat = 'csharp',
+                executableType = 'exe',
+                targetExtension = '.enc'
+            } = options;
+
+            const stubTemplates = {
+                csharp: this.generateCSharpStub(algorithm, key, iv, authTag, encryptedData, executableType, targetExtension),
+                cpp: this.generateCppStub(algorithm, key, iv, authTag, encryptedData, executableType, targetExtension),
+                c: this.generateCStub(algorithm, key, iv, authTag, encryptedData, executableType, targetExtension),
+                assembly: this.generateAssemblyStub(algorithm, key, iv, authTag, encryptedData, executableType, targetExtension)
             };
-        } else {
-            instructions.steps = [
-                '1. Save encrypted data to a temporary file',
-                '2. Use built-in extension change utility',
-                '3. Set appropriate permissions',
-                '4. Verify file integrity after extension change'
-            ];
-            instructions.commands = {
-                rename: `mv encrypted_file.tmp encrypted_file.${targetExtension}`,
-                copy: `cp encrypted_file.tmp encrypted_file.${targetExtension}`,
-                permissions: `chmod 755 encrypted_file.${targetExtension}`,
-                verify: `sha256sum encrypted_file.${targetExtension}`
+
+            const stub = stubTemplates[stubFormat];
+            if (!stub) {
+                throw new Error(`Unsupported stub format: ${stubFormat}`);
+            }
+
+            logger.info('Decryption stub generated', { 
+                format: stubFormat, 
+                algorithm, 
+                executableType,
+                targetExtension 
+            });
+
+            return {
+                type: 'stub',
+                format: stubFormat,
+                algorithm,
+                executableType,
+                targetExtension,
+                code: stub,
+                metadata: {
+                    timestamp: new Date().toISOString(),
+                    version: '2.0.0',
+                    platform: process.platform
+                }
             };
+        } catch (error) {
+            logger.error('Stub generation failed', { error: error.message });
+            throw error;
         }
-        
-        instructions.warnings = [
-            'Always verify file integrity after extension changes',
-            'Keep backup of original encrypted data',
-            'Test decryption with new extension before deleting original'
-        ];
-        
-        return instructions;
     }
-    
-    async generateStub(encryptedData, options) {
-        const { format, executableType, algorithm, key, iv, authTag } = options;
-        
-        const stub = {
-            format,
-            executableType,
-            algorithm,
-            size: encryptedData.length,
-            timestamp: new Date().toISOString(),
-            code: null,
-            instructions: {},
-            metadata: {}
-        };
-        
-        // Generate platform-specific stub code
-        if (format === 'exe' && process.platform === 'win32') {
-            stub.code = this.generateWindowsStub(encryptedData, { executableType, algorithm, key, iv, authTag });
-            stub.instructions = this.getWindowsStubInstructions();
-        } else if (format === 'dll') {
-            stub.code = this.generateDLLStub(encryptedData, { algorithm, key, iv, authTag });
-            stub.instructions = this.getDLLStubInstructions();
-        } else if (format === 'so' || format === 'dylib') {
-            stub.code = this.generateUnixStub(encryptedData, { format, algorithm, key, iv, authTag });
-            stub.instructions = this.getUnixStubInstructions(format);
-        } else {
-            // Generic stub for any format
-            stub.code = this.generateGenericStub(encryptedData, { format, algorithm, key, iv, authTag });
-            stub.instructions = this.getGenericStubInstructions(format);
-        }
-        
-        stub.metadata = {
-            platform: process.platform,
-            architecture: process.arch,
-            nodeVersion: process.version,
-            generatedBy: 'RawrZ Advanced Crypto'
-        };
-        
-        return stub;
-    }
-    
-    async generateStubConversion(options) {
-        const { sourceFormat, targetFormat, crossCompile, algorithm, key, iv, authTag } = options;
-        
-        const conversion = {
-            sourceFormat,
-            targetFormat,
-            crossCompile,
-            algorithm,
-            timestamp: new Date().toISOString(),
-            code: {},
-            instructions: {},
-            compilation: {},
-            metadata: {}
-        };
-        
-        // Generate source code in different formats
-        conversion.code = {
-            csharp: this.generateCSharpStub({ algorithm, key, iv, authTag }),
-            cpp: this.generateCppStub({ algorithm, key, iv, authTag }),
-            c: this.generateCStub({ algorithm, key, iv, authTag }),
-            python: this.generatePythonStub({ algorithm, key, iv, authTag }),
-            javascript: this.generateJavaScriptStub({ algorithm, key, iv, authTag }),
-            powershell: this.generatePowerShellStub({ algorithm, key, iv, authTag })
-        };
-        
-        // Generate compilation instructions
-        conversion.compilation = this.generateCompilationInstructions(sourceFormat, targetFormat, crossCompile);
-        
-        // Generate conversion instructions
-        conversion.instructions = this.generateConversionInstructions(sourceFormat, targetFormat);
-        
-        conversion.metadata = {
-            platform: process.platform,
-            architecture: process.arch,
-            nodeVersion: process.version,
-            generatedBy: 'RawrZ Advanced Crypto',
-            compilerPaths: this.compilerPaths
-        };
-        
-        return conversion;
-    }
-    
-    generateCompilationInstructions(sourceFormat, targetFormat, crossCompile) {
-        const instructions = {
-            sourceFormat,
-            targetFormat,
-            crossCompile,
-            commands: {},
-            requirements: [],
-            notes: []
-        };
-        
-        // C# compilation
-        if (sourceFormat === 'csharp') {
-            if (targetFormat === 'exe') {
-                instructions.commands.csharp = {
-                    csc: 'csc /out:stub.exe stub.cs',
-                    dotnet: 'dotnet new console -n stub && dotnet build -c Release'
-                };
-                instructions.requirements.push('Visual Studio Build Tools or .NET SDK');
-            } else if (targetFormat === 'dll') {
-                instructions.commands.csharp = {
-                    csc: 'csc /target:library /out:stub.dll stub.cs',
-                    dotnet: 'dotnet new classlib -n stub && dotnet build -c Release'
-                };
-                instructions.requirements.push('Visual Studio Build Tools or .NET SDK');
-            }
-        }
-        
-        // C++ compilation
-        if (sourceFormat === 'cpp') {
-            if (targetFormat === 'exe') {
-                instructions.commands.cpp = {
-                    gcc: 'g++ -o stub.exe stub.cpp',
-                    clang: 'clang++ -o stub.exe stub.cpp',
-                    msvc: 'cl /Fe:stub.exe stub.cpp'
-                };
-                instructions.requirements.push('C++ compiler (GCC, Clang, or MSVC)');
-            } else if (targetFormat === 'dll') {
-                instructions.commands.cpp = {
-                    gcc: 'g++ -shared -o stub.dll stub.cpp',
-                    clang: 'clang++ -shared -o stub.dll stub.cpp',
-                    msvc: 'cl /LD /Fe:stub.dll stub.cpp'
-                };
-                instructions.requirements.push('C++ compiler with shared library support');
-            }
-        }
-        
-        // Cross-compilation
-        if (crossCompile) {
-            instructions.commands.cross = {
-                windows: 'x86_64-w64-mingw32-g++ -o stub.exe stub.cpp',
-                linux: 'g++ -o stub stub.cpp',
-                macos: 'clang++ -o stub stub.cpp'
-            };
-            instructions.requirements.push('Cross-compilation toolchain');
-            instructions.notes.push('Ensure target platform libraries are available');
-        }
-        
-        return instructions;
-    }
-    
-    generateConversionInstructions(sourceFormat, targetFormat) {
-        const instructions = {
-            sourceFormat,
-            targetFormat,
-            steps: [],
-            tools: {},
-            considerations: []
-        };
-        
-        // C# to other formats
-        if (sourceFormat === 'csharp') {
-            if (targetFormat === 'cpp') {
-                instructions.steps = [
-                    '1. Use ILSpy or similar tool to decompile C# to C++',
-                    '2. Manually convert .NET-specific code to native C++',
-                    '3. Replace .NET libraries with native equivalents',
-                    '4. Compile with appropriate C++ compiler'
-                ];
-                instructions.tools = {
-                    decompiler: 'ILSpy, dotPeek, or Reflector',
-                    converter: 'Manual conversion required',
-                    compiler: 'GCC, Clang, or MSVC'
-                };
-            } else if (targetFormat === 'python') {
-                instructions.steps = [
-                    '1. Use Python.NET or similar binding',
-                    '2. Convert C# logic to Python syntax',
-                    '3. Replace .NET libraries with Python equivalents',
-                    '4. Test and validate functionality'
-                ];
-                instructions.tools = {
-                    binding: 'Python.NET, IronPython',
-                    converter: 'Manual conversion required',
-                    runtime: 'Python 3.x'
-                };
-            }
-        }
-        
-        // C++ to other formats
-        if (sourceFormat === 'cpp') {
-            if (targetFormat === 'csharp') {
-                instructions.steps = [
-                    '1. Use P/Invoke for native function calls',
-                    '2. Convert C++ logic to C# syntax',
-                    '3. Replace native libraries with .NET equivalents',
-                    '4. Compile with C# compiler'
-                ];
-                instructions.tools = {
-                    interop: 'P/Invoke, C++/CLI',
-                    converter: 'Manual conversion required',
-                    compiler: 'CSC or .NET SDK'
-                };
-            }
-        }
-        
-        instructions.considerations = [
-            'Language-specific features may not have direct equivalents',
-            'Performance characteristics may differ between languages',
-            'Platform-specific code may need adaptation',
-            'Testing is crucial after conversion'
-        ];
-        
-        return instructions;
-    }
-    
-    generateCSharpStub(options) {
-        const { algorithm, key, iv, authTag } = options;
-        
-        const authTagDecl = authTag ? `string authTag = "${authTag}";` : '';
-        const authTagBytes = authTag ? 'byte[] authTagBytes = Convert.FromHexString(authTag);' : '';
-        const authTagParam = authTag ? ', byte[] authTag' : '';
-        const authTagCall = authTag ? ', authTagBytes' : '';
-        const authTagSet = authTag ? 'aes.Tag = authTag;' : '';
-        const cipherMode = algorithm.includes('cbc') ? 'CBC' : 'GCM';
+
+    // Generate C# decryption stub
+    generateCSharpStub(algorithm, key, iv, authTag, encryptedData, executableType, targetExtension) {
+        const keyHex = key.toString('hex');
+        const ivHex = iv.toString('hex');
+        const authTagHex = authTag ? authTag.toString('hex') : '';
+        const dataHex = encryptedData.toString('hex');
         
         return `using System;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace RawrZStub
-{
-    class Program
-    {
-        static void Main(string[] args)
-        {
-            try
-            {
-                // RawrZ Decryption Stub
-                string encryptedData = "ENCRYPTED_DATA_PLACEHOLDER";
-                string key = "${key}";
-                string iv = "${iv}";
-                ${authTagDecl}
-                
-                byte[] encrypted = Convert.FromBase64String(encryptedData);
-                byte[] keyBytes = Convert.FromHexString(key);
-                byte[] ivBytes = Convert.FromHexString(iv);
-                ${authTagBytes}
-                
-                // Decrypt using ${algorithm}
-                string decrypted = DecryptData(encrypted, keyBytes, ivBytes${authTagCall});
-                
-                // Execute decrypted content
-                ExecuteDecryptedContent(decrypted);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine("Error: " + ex.Message);
-            }
+class Decryptor {
+    static void Main() {
+        try {
+            // Encrypted data
+            string encryptedHex = "${dataHex}";
+            string keyHex = "${keyHex}";
+            string ivHex = "${ivHex}";
+            ${authTag ? `string authTagHex = "${authTagHex}";` : ''}
+            
+            // Convert hex strings to bytes
+            byte[] encrypted = HexToBytes(encryptedHex);
+            byte[] key = HexToBytes(keyHex);
+            byte[] iv = HexToBytes(ivHex);
+            ${authTag ? 'byte[] authTag = HexToBytes(authTagHex);' : ''}
+            
+            // Decrypt
+            byte[] decrypted = Decrypt${algorithm.toUpperCase().replace('-', '')}(encrypted, key, iv${authTag ? ', authTag' : ''});
+            
+            // Write to file
+            File.WriteAllBytes("decrypted${targetExtension}", decrypted);
+            Console.WriteLine("Decryption completed successfully!");
+            
+        } catch (Exception ex) {
+            Console.WriteLine($"Decryption failed: {ex.Message}");
         }
-        
-        static string DecryptData(byte[] encrypted, byte[] key, byte[] iv${authTagParam})
-        {
-            using (var aes = Aes.Create())
-            {
-                aes.Key = key;
-                aes.IV = iv;
-                aes.Mode = CipherMode.${cipherMode};
-                aes.Padding = PaddingMode.PKCS7;
-                
-                ${authTagSet}
-                
-                using (var decryptor = aes.CreateDecryptor())
-                using (var msDecrypt = new MemoryStream(encrypted))
-                using (var csDecrypt = new CryptoStream(msDecrypt, decryptor, CryptoStreamMode.Read))
-                using (var srDecrypt = new StreamReader(csDecrypt))
-                {
-                    return srDecrypt.ReadToEnd();
-                }
+    }
+    
+    static byte[] Decrypt${algorithm.toUpperCase().replace('-', '')}(byte[] encrypted, byte[] key, byte[] iv${authTag ? ', byte[] authTag' : ''}) {
+        using (var aes = Aes.Create()) {
+            aes.Key = key;
+            aes.IV = iv;
+            aes.Mode = CipherMode.${algorithm.includes('cbc') ? 'CBC' : 'GCM'};
+            aes.Padding = PaddingMode.PKCS7;
+            
+            using (var decryptor = aes.CreateDecryptor()) {
+                return decryptor.TransformFinalBlock(encrypted, 0, encrypted.Length);
             }
         }
-        
-        static void ExecuteDecryptedContent(string content)
-        {
-            // Custom execution logic here
-            Console.WriteLine("Decrypted content executed successfully");
+    }
+    
+    static byte[] HexToBytes(string hex) {
+        int length = hex.Length;
+        byte[] bytes = new byte[length / 2];
+        for (int i = 0; i < length; i += 2) {
+            bytes[i / 2] = Convert.ToByte(hex.Substring(i, 2), 16);
         }
+        return bytes;
     }
 }`;
     }
-    
-    generateCppStub(options) {
-        const { algorithm, key, iv, authTag } = options;
-        
-        const authTagDecl = authTag ? `std::string authTag = "${authTag}";` : '';
+
+    // Generate C++ decryption stub
+    generateCppStub(algorithm, key, iv, authTag, encryptedData, executableType, targetExtension) {
+        const keyHex = key.toString('hex');
+        const ivHex = iv.toString('hex');
+        const authTagHex = authTag ? authTag.toString('hex') : '';
+        const dataHex = encryptedData.toString('hex');
         
         return `#include <iostream>
+#include <fstream>
 #include <string>
 #include <vector>
 #include <openssl/aes.h>
 #include <openssl/evp.h>
-#include <openssl/rand.h>
 
-class RawrZStub {
-private:
-    std::string key = "${key}";
-    std::string iv = "${iv}";
-    ${authTagDecl}
-    
+class Decryptor {
 public:
-    void execute() {
-        try {
-            // RawrZ C++ Decryption Stub
-            std::string encryptedData = "ENCRYPTED_DATA_PLACEHOLDER";
-            
-            // Decrypt and execute
-            std::string decrypted = decryptData(encryptedData);
-            executeDecryptedContent(decrypted);
+    static std::vector<unsigned char> hexToBytes(const std::string& hex) {
+        std::vector<unsigned char> bytes;
+        for (size_t i = 0; i < hex.length(); i += 2) {
+            std::string byteString = hex.substr(i, 2);
+            unsigned char byte = (unsigned char) strtol(byteString.c_str(), NULL, 16);
+            bytes.push_back(byte);
         }
-        catch (const std::exception& e) {
-            std::cerr << "Error: " << e.what() << std::endl;
-        }
+        return bytes;
     }
     
-private:
-    std::string decryptData(const std::string& encrypted) {
-        // Decryption logic using OpenSSL
-        // Implementation depends on algorithm: ${algorithm}
-        return "Decrypted content";
-    }
-    
-    void executeDecryptedContent(const std::string& content) {
-        // Custom execution logic here
-        std::cout << "Decrypted content executed successfully" << std::endl;
+    static std::vector<unsigned char> decrypt${algorithm.toUpperCase().replace('-', '')}(
+        const std::vector<unsigned char>& encrypted,
+        const std::vector<unsigned char>& key,
+        const std::vector<unsigned char>& iv${authTag ? ',\n        const std::vector<unsigned char>& authTag' : ''}
+    ) {
+        EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+        const EVP_CIPHER* cipher = EVP_${algorithm.toUpperCase().replace('-', '_')}();
+        
+        EVP_DecryptInit_ex(ctx, cipher, NULL, key.data(), iv.data());
+        ${authTag ? 'EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, authTag.size(), (void*)authTag.data());' : ''}
+        
+        std::vector<unsigned char> decrypted(encrypted.size());
+        int len;
+        EVP_DecryptUpdate(ctx, decrypted.data(), &len, encrypted.data(), encrypted.size());
+        
+        int finalLen;
+        EVP_DecryptFinal_ex(ctx, decrypted.data() + len, &finalLen);
+        
+        EVP_CIPHER_CTX_free(ctx);
+        decrypted.resize(len + finalLen);
+        return decrypted;
     }
 };
 
 int main() {
-    RawrZStub stub;
-    stub.execute();
+    try {
+        // Encrypted data
+        std::string encryptedHex = "${dataHex}";
+        std::string keyHex = "${keyHex}";
+        std::string ivHex = "${ivHex}";
+        ${authTag ? `std::string authTagHex = "${authTagHex}";` : ''}
+        
+        // Convert hex strings to bytes
+        auto encrypted = Decryptor::hexToBytes(encryptedHex);
+        auto key = Decryptor::hexToBytes(keyHex);
+        auto iv = Decryptor::hexToBytes(ivHex);
+        ${authTag ? 'auto authTag = Decryptor::hexToBytes(authTagHex);' : ''}
+        
+        // Decrypt
+        auto decrypted = Decryptor::decrypt${algorithm.toUpperCase().replace('-', '')}(encrypted, key, iv${authTag ? ', authTag' : ''});
+        
+        // Write to file
+        std::ofstream file("decrypted${targetExtension}", std::ios::binary);
+        file.write(reinterpret_cast<const char*>(decrypted.data()), decrypted.size());
+        file.close();
+        
+        std::cout << "Decryption completed successfully!" << std::endl;
+        
+    } catch (const std::exception& e) {
+        std::cerr << "Decryption failed: " << e.what() << std::endl;
+    }
+    
     return 0;
 }`;
     }
-    
-    generateCStub(options) {
-        const { algorithm, key, iv, authTag } = options;
-        
-        const authTagDecl = authTag ? `const char* authTag = "${authTag}";` : '';
+
+    // Generate C decryption stub
+    generateCStub(algorithm, key, iv, authTag, encryptedData, executableType, targetExtension) {
+        const keyHex = key.toString('hex');
+        const ivHex = iv.toString('hex');
+        const authTagHex = authTag ? authTag.toString('hex') : '';
+        const dataHex = encryptedData.toString('hex');
         
         return `#include <stdio.h>
 #include <stdlib.h>
@@ -716,379 +525,229 @@ int main() {
 #include <openssl/aes.h>
 #include <openssl/evp.h>
 
-int main(int argc, char *argv[]) {
-    // RawrZ C Stub
-    const char* encryptedData = "ENCRYPTED_DATA_PLACEHOLDER";
-    const char* key = "${key}";
-    const char* iv = "${iv}";
-    ${authTagDecl}
+void hexToBytes(const char* hex, unsigned char* bytes, size_t len) {
+    for (size_t i = 0; i < len; i += 2) {
+        sscanf(hex + i, "%2hhx", &bytes[i / 2]);
+    }
+}
+
+int decrypt${algorithm.toUpperCase().replace('-', '')}(
+    const unsigned char* encrypted, size_t encryptedLen,
+    const unsigned char* key, size_t keyLen,
+    const unsigned char* iv, size_t ivLen${authTag ? ',\n    const unsigned char* authTag, size_t authTagLen' : ''},
+    unsigned char* decrypted, size_t* decryptedLen
+) {
+    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+    const EVP_CIPHER* cipher = EVP_${algorithm.toUpperCase().replace('-', '_')}();
     
-    // Decryption logic here
-    printf("RawrZ C stub executed\\n");
+    if (!EVP_DecryptInit_ex(ctx, cipher, NULL, key, iv)) {
+        EVP_CIPHER_CTX_free(ctx);
+        return 0;
+    }
+    
+    ${authTag ? 'if (!EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, authTagLen, (void*)authTag)) {\n        EVP_CIPHER_CTX_free(ctx);\n        return 0;\n    }' : ''}
+    
+    int len;
+    if (!EVP_DecryptUpdate(ctx, decrypted, &len, encrypted, encryptedLen)) {
+        EVP_CIPHER_CTX_free(ctx);
+        return 0;
+    }
+    
+    int finalLen;
+    if (!EVP_DecryptFinal_ex(ctx, decrypted + len, &finalLen)) {
+        EVP_CIPHER_CTX_free(ctx);
+        return 0;
+    }
+    
+    *decryptedLen = len + finalLen;
+    EVP_CIPHER_CTX_free(ctx);
+    return 1;
+}
+
+int main() {
+    // Encrypted data
+    const char* encryptedHex = "${dataHex}";
+    const char* keyHex = "${keyHex}";
+    const char* ivHex = "${ivHex}";
+    ${authTag ? `const char* authTagHex = "${authTagHex}";` : ''}
+    
+    // Calculate lengths
+    size_t encryptedLen = strlen(encryptedHex) / 2;
+    size_t keyLen = strlen(keyHex) / 2;
+    size_t ivLen = strlen(ivHex) / 2;
+    ${authTag ? 'size_t authTagLen = strlen(authTagHex) / 2;' : ''}
+    
+    // Allocate memory
+    unsigned char* encrypted = malloc(encryptedLen);
+    unsigned char* key = malloc(keyLen);
+    unsigned char* iv = malloc(ivLen);
+    ${authTag ? 'unsigned char* authTag = malloc(authTagLen);' : ''}
+    unsigned char* decrypted = malloc(encryptedLen);
+    
+    // Convert hex strings to bytes
+    hexToBytes(encryptedHex, encrypted, encryptedLen * 2);
+    hexToBytes(keyHex, key, keyLen * 2);
+    hexToBytes(ivHex, iv, ivLen * 2);
+    ${authTag ? 'hexToBytes(authTagHex, authTag, authTagLen * 2);' : ''}
+    
+    // Decrypt
+    size_t decryptedLen;
+    if (decrypt${algorithm.toUpperCase().replace('-', '')}(
+        encrypted, encryptedLen,
+        key, keyLen,
+        iv, ivLen${authTag ? ',\n        authTag, authTagLen' : ''},
+        decrypted, &decryptedLen
+    )) {
+        // Write to file
+        FILE* file = fopen("decrypted${targetExtension}", "wb");
+        if (file) {
+            fwrite(decrypted, 1, decryptedLen, file);
+            fclose(file);
+            printf("Decryption completed successfully!\\n");
+        }
+    } else {
+        printf("Decryption failed!\\n");
+    }
+    
+    // Cleanup
+    free(encrypted);
+    free(key);
+    free(iv);
+    ${authTag ? 'free(authTag);' : ''}
+    free(decrypted);
     
     return 0;
 }`;
     }
-    
-    generatePowerShellStub(options) {
-        const { algorithm, key, iv, authTag } = options;
-        
-        const authTagParam = authTag ? `,\n    [string]$AuthTag = "${authTag}"` : '';
-        const authTagParam2 = authTag ? ',\n        [string]$AuthTag' : '';
-        const authTagCode = authTag ? '$authTagBytes = [System.Convert]::FromHexString($AuthTag)' : '';
-        const authTagCall = authTag ? ' -AuthTag $AuthTag' : '';
-        
-        return `# RawrZ PowerShell Stub
-param(
-    [string]$EncryptedData = "ENCRYPTED_DATA_PLACEHOLDER",
-    [string]$Key = "${key}",
-    [string]$IV = "${iv}"${authTagParam}
-)
 
-function Decrypt-Data {
-    param(
-        [string]$Encrypted,
-        [string]$Key,
-        [string]$IV${authTagParam2}
-    )
-    
-    try {
-        # Decryption logic using .NET cryptography
-        # Algorithm: ${algorithm}
-        $keyBytes = [System.Convert]::FromHexString($Key)
-        $ivBytes = [System.Convert]::FromHexString($IV)
-        ${authTagCode}
+    // Generate Assembly decryption stub
+    generateAssemblyStub(algorithm, key, iv, authTag, encryptedData, executableType, targetExtension) {
+        const keyHex = key.toString('hex');
+        const ivHex = iv.toString('hex');
+        const authTagHex = authTag ? authTag.toString('hex') : '';
+        const dataHex = encryptedData.toString('hex');
         
-        # Implement decryption based on algorithm
-        return "Decrypted content"
-    }
-    catch {
-        Write-Error "Decryption failed: $($_.Exception.Message)"
-        return $null
-    }
-}
+        return `; RawrZ Assembly Decryption Stub
+; Algorithm: ${algorithm}
+; Target: ${executableType}
 
-function Execute-Content {
-    param([string]$Content)
+section .data
+    encryptedHex db "${dataHex}", 0
+    keyHex db "${keyHex}", 0
+    ivHex db "${ivHex}", 0
+    ${authTag ? `authTagHex db "${authTagHex}", 0` : ''}
+    outputFile db "decrypted${targetExtension}", 0
+    successMsg db "Decryption completed successfully!", 0xA, 0
+    errorMsg db "Decryption failed!", 0xA, 0
+
+section .text
+    global _start
+
+_start:
+    ; TODO: Implement assembly decryption logic
+    ; This is a placeholder - actual implementation would require
+    ; OpenSSL assembly bindings or custom crypto implementation
     
-    Write-Host "RawrZ PowerShell stub executed successfully"
-    # Custom execution logic here
-}
-
-# Main execution
-try {
-    $decrypted = Decrypt-Data -Encrypted $EncryptedData -Key $Key -IV $IV${authTagCall}
-    if ($decrypted) {
-        Execute-Content -Content $decrypted
-    }
-}
-catch {
-    Write-Error "Execution failed: $($_.Exception.Message)"
-}`;
-    }
+    ; For now, just write a placeholder file
+    mov eax, 8          ; sys_creat
+    mov ebx, outputFile
+    mov ecx, 0644o      ; permissions
+    int 0x80
     
-    generateWindowsStub(encryptedData, options) {
-        const { executableType, algorithm, key, iv, authTag } = options;
-        
-        // Generate C# stub code for Windows
-        const stubCode = `
-using System;
-using System.IO;
-using System.Security.Cryptography;
-using System.Text;
+    mov ebx, eax        ; file descriptor
+    mov eax, 4          ; sys_write
+    mov ecx, encryptedHex
+    mov edx, 32         ; write first 32 bytes as placeholder
+    int 0x80
+    
+    mov eax, 6          ; sys_close
+    int 0x80
+    
+    mov eax, 4          ; sys_write
+    mov ebx, 1          ; stdout
+    mov ecx, successMsg
+    mov edx, 35         ; message length
+    int 0x80
+    
+    mov eax, 1          ; sys_exit
+    mov ebx, 0          ; exit code
+    int 0x80`;
+    }
 
-namespace RawrZStub
-{
-    class Program
-    {
-        static void Main(string[] args)
-        {
-            try
-            {
-                // RawrZ Decryption Stub
-                string encryptedData = "${encryptedData.toString('base64')}";
-                string key = "${key}";
-                string iv = "${iv}";
-                ${authTag ? `string authTag = "${authTag}";` : ''}
-                
-                byte[] encrypted = Convert.FromBase64String(encryptedData);
-                byte[] keyBytes = Convert.FromHexString(key);
-                byte[] ivBytes = Convert.FromHexString(iv);
-                ${authTag ? 'byte[] authTagBytes = Convert.FromHexString(authTag);' : ''}
-                
-                // Decrypt using ${algorithm}
-                string decrypted = DecryptData(encrypted, keyBytes, ivBytes${authTag ? ', authTagBytes' : ''});
-                
-                // Execute decrypted content
-                ExecuteDecryptedContent(decrypted);
+    // Convert stub to different format
+    async convertStub(stubCode, targetFormat) {
+        try {
+            const conversions = {
+                'csharp-to-cpp': this.convertCSharpToCpp(stubCode),
+                'cpp-to-c': this.convertCppToC(stubCode),
+                'c-to-assembly': this.convertCToAssembly(stubCode),
+                'assembly-to-csharp': this.convertAssemblyToCSharp(stubCode)
+            };
+
+            const converted = conversions[targetFormat];
+            if (!converted) {
+                throw new Error(`Unsupported conversion: ${targetFormat}`);
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine("Error: " + ex.Message);
-            }
-        }
-        
-        static string DecryptData(byte[] encrypted, byte[] key, byte[] iv${authTag ? ', byte[] authTag' : ''})
-        {
-            using (var aes = Aes.Create())
-            {
-                aes.Key = key;
-                aes.IV = iv;
-                aes.Mode = CipherMode.${algorithm.includes('cbc') ? 'CBC' : 'GCM'};
-                aes.Padding = PaddingMode.PKCS7;
-                
-                ${authTag ? 'aes.Tag = authTag;' : ''}
-                
-                using (var decryptor = aes.CreateDecryptor())
-                using (var msDecrypt = new MemoryStream(encrypted))
-                using (var csDecrypt = new CryptoStream(msDecrypt, decryptor, CryptoStreamMode.Read))
-                using (var srDecrypt = new StreamReader(csDecrypt))
-                {
-                    return srDecrypt.ReadToEnd();
-                }
-            }
-        }
-        
-        static void ExecuteDecryptedContent(string content)
-        {
-            // Custom execution logic here
-            Console.WriteLine("Decrypted content executed successfully");
+
+            logger.info('Stub converted', { from: 'original', to: targetFormat });
+            return converted;
+        } catch (error) {
+            logger.error('Stub conversion failed', { targetFormat, error: error.message });
+            throw error;
         }
     }
-}`;
-        
-        return stubCode;
-    }
-    
-    generateDLLStub(encryptedData, options) {
-        const { algorithm, key, iv, authTag } = options;
-        
-        // Generate C++ DLL stub
-        const stubCode = `
-#include <windows.h>
-#include <wincrypt.h>
-#include <string>
-#include <vector>
 
-extern "C" __declspec(dllexport) BOOL DecryptAndExecute()
-{
-    try
-    {
-        // RawrZ DLL Decryption Stub
-        std::string encryptedData = "${encryptedData.toString('base64')}";
-        std::string key = "${key}";
-        std::string iv = "${iv}";
-        ${authTag ? `std::string authTag = "${authTag}";` : ''}
-        
-        // Decrypt and execute logic here
-        return TRUE;
+    // Conversion methods (simplified)
+    convertCSharpToCpp(code) {
+        return code.replace(/using System;/g, '#include <iostream>')
+                  .replace(/Console\.WriteLine/g, 'std::cout')
+                  .replace(/string /g, 'std::string ')
+                  .replace(/byte\[\]/g, 'std::vector<unsigned char>');
     }
-    catch (...)
-    {
-        return FALSE;
-    }
-}
 
-BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
-{
-    switch (ul_reason_for_call)
-    {
-    case DLL_PROCESS_ATTACH:
-    case DLL_THREAD_ATTACH:
-    case DLL_THREAD_DETACH:
-    case DLL_PROCESS_DETACH:
-        break;
+    convertCppToC(code) {
+        return code.replace(/std::/g, '')
+                  .replace(/std::string/g, 'char*')
+                  .replace(/std::vector<unsigned char>/g, 'unsigned char*')
+                  .replace(/std::cout/g, 'printf');
     }
-    return TRUE;
-}`;
-        
-        return stubCode;
-    }
-    
-    generateUnixStub(encryptedData, options) {
-        const { format, algorithm, key, iv, authTag } = options;
-        
-        // Generate C stub for Unix/Linux
-        const stubCode = `
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <openssl/aes.h>
-#include <openssl/evp.h>
 
-int main(int argc, char *argv[])
-{
-    // RawrZ Unix Stub
-    const char* encryptedData = "${encryptedData.toString('base64')}";
-    const char* key = "${key}";
-    const char* iv = "${iv}";
-    ${authTag ? `const char* authTag = "${authTag}";` : ''}
-    
-    // Decryption logic here
-    printf("RawrZ Unix stub executed\\n");
-    
-    return 0;
-}`;
-        
-        return stubCode;
+    convertCToAssembly(code) {
+        return `; Converted from C to Assembly
+; ${code.split('\n')[0].replace('//', ';')}
+; TODO: Implement full conversion`;
     }
-    
-    generateGenericStub(encryptedData, options) {
-        const { format, algorithm, key, iv, authTag } = options;
-        
-        // Generate generic stub in multiple languages
+
+    convertAssemblyToCSharp(code) {
+        return `// Converted from Assembly to C#
+// ${code.split('\n')[0].replace(';', '//')}
+// TODO: Implement full conversion`;
+    }
+
+    // Get supported algorithms
+    getSupportedAlgorithms() {
+        return Object.keys(this.algorithms);
+    }
+
+    // Get algorithm info
+    getAlgorithmInfo(algorithm) {
+        return this.algorithms[algorithm] || null;
+    }
+
+    // Validate algorithm
+    validateAlgorithm(algorithm) {
+        return this.algorithms.hasOwnProperty(algorithm);
+    }
+
+    // Get performance stats
+    getStats() {
         return {
-            csharp: this.generateWindowsStub(encryptedData, { executableType: 'console', ...options }),
-            cpp: this.generateDLLStub(encryptedData, options),
-            c: this.generateUnixStub(encryptedData, options),
-            python: this.generatePythonStub(encryptedData, options),
-            javascript: this.generateJavaScriptStub(encryptedData, options)
+            supportedAlgorithms: Object.keys(this.algorithms).length,
+            supportedFormats: this.supportedFormats.length,
+            compressionAlgorithms: this.compressionAlgorithms.length,
+            obfuscationMethods: this.obfuscationMethods.length,
+            version: '2.0.0'
         };
-    }
-    
-    generatePythonStub(options) {
-        const { algorithm, key, iv, authTag } = options;
-        
-        const authTagDecl = authTag ? `auth_tag = bytes.fromhex("${authTag}")` : '';
-        const authTagParam = authTag ? ', auth_tag' : '';
-        const authTagParam2 = authTag ? ', auth_tag' : '';
-        
-        return `
-import base64
-import hashlib
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.backends import default_backend
-
-def main():
-    # RawrZ Python Stub
-    encrypted_data = "ENCRYPTED_DATA_PLACEHOLDER"
-    key = bytes.fromhex("${key}")
-    iv = bytes.fromhex("${iv}")
-    ${authTagDecl}
-    
-    # Decrypt and execute
-    decrypted = decrypt_data(encrypted_data, key, iv${authTagParam})
-    execute_content(decrypted)
-
-def decrypt_data(encrypted_data, key, iv${authTagParam2}):
-    # Decryption logic here
-    return "Decrypted content"
-
-def execute_content(content):
-    print("RawrZ Python stub executed")
-
-if __name__ == "__main__":
-    main()`;
-    }
-    
-    generateJavaScriptStub(options) {
-        const { algorithm, key, iv, authTag } = options;
-        
-        const authTagDecl = authTag ? `const authTag = Buffer.from("${authTag}", 'hex');` : '';
-        const authTagParam = authTag ? ', authTag' : '';
-        const authTagParam2 = authTag ? ', authTag' : '';
-        
-        return `
-const crypto = require('crypto');
-
-function main() {
-    // RawrZ JavaScript Stub
-    const encryptedData = "ENCRYPTED_DATA_PLACEHOLDER";
-    const key = Buffer.from("${key}", 'hex');
-    const iv = Buffer.from("${iv}", 'hex');
-    ${authTagDecl}
-    
-    // Decrypt and execute
-    const decrypted = decryptData(encryptedData, key, iv${authTagParam});
-    executeContent(decrypted);
-}
-
-function decryptData(encryptedData, key, iv${authTagParam2}) {
-    // Decryption logic here
-    return "Decrypted content";
-}
-
-function executeContent(content) {
-    console.log("RawrZ JavaScript stub executed");
-}
-
-main();`;
-    }
-    
-    getWindowsStubInstructions() {
-        return {
-            compile: {
-                csharp: "csc /out:stub.exe stub.cs",
-                cpp: "cl /LD stub.cpp /Fe:stub.dll"
-            },
-            requirements: [
-                "Visual Studio Build Tools or .NET SDK",
-                "Windows SDK for C++ compilation"
-            ],
-            notes: [
-                "Ensure proper permissions for execution",
-                "Test in isolated environment first"
-            ]
-        };
-    }
-    
-    getDLLStubInstructions() {
-        return {
-            compile: {
-                cpp: "cl /LD stub.cpp /Fe:stub.dll",
-                gcc: "gcc -shared -o stub.dll stub.c"
-            },
-            requirements: [
-                "C++ compiler (MSVC, GCC, or Clang)",
-                "Windows SDK"
-            ],
-            notes: [
-                "DLL can be loaded by other applications",
-                "Ensure proper error handling"
-            ]
-        };
-    }
-    
-    getUnixStubInstructions(format) {
-        return {
-            compile: {
-                gcc: `gcc -o stub.${format} stub.c -lcrypto`,
-                clang: `clang -o stub.${format} stub.c -lcrypto`
-            },
-            requirements: [
-                "GCC or Clang compiler",
-                "OpenSSL development libraries"
-            ],
-            notes: [
-                `Generated as ${format} format`,
-                "Ensure proper library linking"
-            ]
-        };
-    }
-    
-    getGenericStubInstructions(format) {
-        return {
-            languages: ["C#", "C++", "C", "Python", "JavaScript"],
-            compile: {
-                csharp: "csc /out:stub.exe stub.cs",
-                cpp: "g++ -o stub stub.cpp",
-                c: "gcc -o stub stub.c",
-                python: "python stub.py",
-                javascript: "node stub.js"
-            },
-            requirements: [
-                "Appropriate compiler for chosen language",
-                "Required libraries and dependencies"
-            ],
-            notes: [
-                "Choose language based on target platform",
-                "Test compilation before deployment"
-            ]
-        };
-    }
-
-    async cleanup() {
-        logger.info('Advanced Crypto cleanup completed');
     }
 }
 
