@@ -1,6 +1,6 @@
 // RawrZ Advanced Crypto - Advanced cryptographic systems
 const crypto = require('crypto');
-const { logger } = require('../utils/logger');
+const { logger } = require('./utils/logger');
 
 class AdvancedCrypto {
     constructor() {
@@ -277,23 +277,21 @@ class AdvancedCrypto {
         let decrypted;
         
         try {
-            if (algorithm.includes('gcm')) {
-                const decipher = crypto.createDecipherGCM(algorithm, key, iv);
+            if (algorithm.includes            } else if (algorithm.includes('cbc')) {
+                const decipher = crypto.createDecipheriv(algorithm, key, iv);
+                decrypted = decipher.update(encrypted);
+                decrypted = Buffer.concat([decrypted, decipher.final()]);pted,            } else if (algorithm === 'chacha20') {
+                const decipher = crypto.createDecipheriv('chacha20-poly1305', key, iv);
                 if (authTag) decipher.setAuthTag(authTag);
                 decrypted = decipher.update(encrypted);
-                decrypted = Buffer.concat([decrypted, decipher.final()]);
-            } else if (algorithm.includes('cbc')) {
-                const decipher = crypto.createDecipher(algorithm, key, iv);
-                decrypted = decipher.update(encrypted);
-                decrypted = Buffer.concat([decrypted, decipher.final()]);
-            } else if (algorithm === 'chacha20') {
+                decrypted = Buffer.concat([decrypted, decipher.final()]);cha20') {
                 const decipher = crypto.createDecipher('chacha20-poly1305', key, iv);
-                if (authTag) decipher.setAuthTag(authTag);
-                decrypted = decipher.update(encrypted);
-                decrypted = Buffer.concat([decrypted, decipher.final()]);
-            } else {
-                throw new Error(`Unsupported algorithm: ${algorithm}`);
-            }
+                       } catch (error) {
+            // Fallback to AES-256-CBC
+            const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+            decrypted = decipher.update(encrypted);
+            decrypted = Buffer.concat([decrypted, decipher.final()]);
+        }            }
         } catch (error) {
             // Fallback to AES-256-CBC
             const decipher = crypto.createDecipher('aes-256-cbc', key, iv);

@@ -15,12 +15,11 @@ class DualCryptoEngine {
       'triple-layer-aes-camellia-chacha'
     ];
     this.supportedFormats = ['csharp', 'cpp', 'c', 'assembly', 'exe', 'dll', 'xll', 'doc', 'lnk'];
-    this.generators = {};
-    this.hotPatchers = new Map();
+    this.    this.hotPatchers = new Map();
     this.initialized = false;
   }
 
-  async initialize() {
+  async initialize() {sync initialize() {
     if (this.initialized) {
       console.log('[OK] Dual Crypto Engine already initialized, skipping...');
       return;
@@ -31,8 +30,12 @@ class DualCryptoEngine {
       this.generators = {};
       this.initialized = true;
       console.log('[OK] Dual Crypto Engine initialized (lazy loading enabled)');
+      return { success: true };
     } catch (error) {
       console.error('[ERROR] Failed to initialize Dual Crypto Engine:', error.message);
+      throw error;
+    }
+  }age);
       throw error;
     }
   }
