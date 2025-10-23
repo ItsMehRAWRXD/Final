@@ -202,7 +202,7 @@ class PerformanceMonitor {
     }
 
     parseSize(sizeStr) {
-        const units = { K: 1024, M: 1024**2, G: 1024**3, T: 1024**4 };
+        const units = { K: 1024, M: Math.pow(1024, 2), G: Math.pow(1024, 3), T: Math.pow(1024, 4) };
         const match = sizeStr.match(/^(\d+(?:\.\d+)?)([KMGT]?)$/);
         if (match) {
             const value = parseFloat(match[1]);
