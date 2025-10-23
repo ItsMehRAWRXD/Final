@@ -319,7 +319,7 @@ class PerformanceMonitor {
                 avgMemoryUsage: avgMemory.toFixed(2),
                 avgDiskUsage: avgDisk.toFixed(2),
                 totalAlerts: this.alerts.length,
-                monitoringDuration: this.monitoring ? Date.now() - this.history[0]?.timestamp : 0
+                monitoringDuration: this.monitoring ? Date.now() - (this.history[0]?.timestamp ? Date.parse(this.history[0].timestamp) : 0) : 0
             },
             current: this.metrics,
             recommendations: this.getRecommendations()
