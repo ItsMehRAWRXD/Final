@@ -101,15 +101,30 @@ class AdvancedCrypto {
             
             // ChaCha20
             'chacha20': { keySize: 32, ivSize: 12 }
-        };
+        };    async encrypt(data, options = {}) {
+        // Input validation and sanitization
+        if (!data) {
+            throw new Error('Data is required for encryption');
+        }
         
-        return sizes[algorithm] || { keySize: 32, ivSize: 16 }; // Default to AES-256
-    }
-
-    async encrypt(data, options = {}) {
+        if (Buffer.isBuffer(data) && data.length > 100 * 1024 * 1024) { // 100MB limit
+            throw new Error('Data too large for encryption');
+        }
+        
         const algorithm = this.normalizeAlgorithm(options.algorithm || 'aes-256-gcm');
         const { keySize, ivSize } = this.getKeyAndIVSizes(algorithm);
+        
+        // Use cryptographically secure random generation
         const key = options.key ? Buffer.from(options.key, 'hex') : crypto.randomBytes(keySize);
+        const iv = options.iv ? Buffer.from(options.iv, 'hex') : crypto.randomBytes(ivSize);
+        
+        // Validate key and IV sizes
+        if (key.length !== keySize) {
+            throw new Error(`Invalid key size: expected ${keySize}, got ${key.length}`);
+        }
+        if (iv.length !== ivSize) {
+            throw new Error(`Invalid IV size: expected ${ivSize}, got ${iv.length}`);
+        }domBytes(keySize);
         const iv = options.iv ? Buffer.from(options.iv, 'hex') : crypto.randomBytes(ivSize);
         
         // Handle file extension preservation

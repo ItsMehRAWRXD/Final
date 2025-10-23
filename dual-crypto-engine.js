@@ -17,10 +17,7 @@ class DualCryptoEngine {
     this.supportedFormats = ['csharp', 'cpp', 'c', 'assembly', 'exe', 'dll', 'xll', 'doc', 'lnk'];
     this.generators = {};
     this.hotPatchers = new Map();
-    this.initialized = false;
-  }
-
-  async initialize() {
+    this.initial  async initialize() {
     if (this.initialized) {
       console.log('[OK] Dual Crypto Engine already initialized, skipping...');
       return;
@@ -33,6 +30,42 @@ class DualCryptoEngine {
       console.log('[OK] Dual Crypto Engine initialized (lazy loading enabled)');
     } catch (error) {
       console.error('[ERROR] Failed to initialize Dual Crypto Engine:', error.message);
+      throw error;
+    }
+  }
+
+  // Input validation and sanitization
+  validateEncryptionOptions(options) {
+    const validated = { ...options };
+    
+    // Validate algorithm
+    if (validated.algorithm && !this.supportedAlgorithms.includes(validated.algorithm)) {
+      throw new Error(`Unsupported algorithm: ${validated.algorithm}`);
+    }
+    
+    // Validate data type
+    const validDataTypes = ['text', 'binary', 'base64', 'hex'];
+    if (validated.dataType && !validDataTypes.includes(validated.dataType)) {
+      throw new Error(`Invalid data type: ${validated.dataType}`);
+    }
+    
+    // Validate stub format
+    if (validated.stubFormat && !this.supportedFormats.includes(validated.stubFormat)) {
+      throw new Error(`Unsupported stub format: ${validated.stubFormat}`);
+    }
+    
+    // Sanitize file type
+    if (validated.fileType) {
+      validated.fileType = validated.fileType.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    }
+    
+    // Validate extension
+    if (validated.targetExtension && !validated.targetExtension.match(/^\.\w+$/)) {
+      throw new Error('Invalid target extension format');
+    }
+    
+    return validated;
+  }age);
       throw error;
     }
   }
@@ -114,15 +147,19 @@ class DualCryptoEngine {
       console.log(`[OK] ${name} generator loaded successfully`);
       return this.generators[name];
     } catch (error) {
-      console.error(`[ERROR] Failed to load ${name} generator:`, error.message);
-      this.generators[name] = null;
-      return null;
-    }
-  }
-
-  async encrypt(data, options = {}) {
+      console.error(`[ERROR] Fa  async encrypt(data, options = {}) {
     await this.initialize();
 
+    // Input validation and security checks
+    if (!data) {
+      throw new Error('Data is required for encryption');
+    }
+    
+    if (Buffer.isBuffer(data) && data.length > 100 * 1024 * 1024) { // 100MB limit
+      throw new Error('Data too large for encryption');
+    }
+    
+    // Validate and sanitize options
     const {
       algorithm = 'aes-camellia-dual',
       key = null,
@@ -132,6 +169,10 @@ class DualCryptoEngine {
       stubFormat = 'csharp',
       convertStub = false,
       sourceFormat = 'csharp',
+      targetFormat = 'exe',
+      crossCompile = false,
+      fileType = 'exe' // Support for .xll, .doc, .lnk, etc.
+    } = this.validateEncryptionOptions(options);
       targetFormat = 'exe',
       crossCompile = false,
       fileType = 'exe' // Support for .xll, .doc, .lnk, etc.

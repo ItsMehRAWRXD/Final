@@ -56,16 +56,24 @@ class StealthEngine {
 
     async initialize(config) {
         this.config = config.stealth || {};
-        logger.info('Stealth Engine initialized');
-    }
-
     // Enable stealth mode
     async enableStealth(mode = 'standard') {
         const startTime = Date.now();
         
         try {
+            // Input validation
+            if (!mode || typeof mode !== 'string') {
+                throw new Error('Stealth mode must be a valid string');
+            }
+            
             if (!this.stealthModes[mode]) {
                 throw new Error(`Invalid stealth mode: ${mode}. Available modes: ${Object.keys(this.stealthModes).join(', ')}`);
+            }
+            
+            // Security check - prevent enabling stealth in production without proper authorization
+            if (process.env.NODE_ENV === 'production' && !process.env.ALLOW_STEALTH_MODE) {
+                throw new Error('Stealth mode not allowed in production environment');
+            }odes: ${Object.keys(this.stealthModes).join(', ')}`);
             }
             
             const modesToEnable = this.stealthModes[mode];
