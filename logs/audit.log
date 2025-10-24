@@ -1,1 +1,2 @@
 {"id":"8a2293cb-68c1-4479-9fe8-1710121b5519","timestamp":"2025-10-22T18:06:18.945Z","action":"file-access","resource":"sensitive-file.txt","user":"test-user","ip":"unknown","result":"success","details":{}}
+{"id":"9ada1fb0-885b-47c8-8137-bf4074584ad6","timestamp":"2025-10-24T12:45:03.223Z","action":"file-access","resource":"sensitive-file.txt","user":"test-user","ip":"unknown","result":"success","details":{}}
