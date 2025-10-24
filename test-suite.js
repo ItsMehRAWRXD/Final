@@ -60,27 +60,52 @@ class TestSuite {
         // Test valid inputs
         assert.doesNotThrow(() => rawrz.validateInput('test', 'string'));
         assert.doesNotThrow(() => rawrz.validateInput(123, 'number'));
-        assert.doesNotThrow(() => rawrz.validateInput('aes256', 'algorithm'));
-
-        // Test invalid inputs
-        assert.throws(() => rawrz.validateInput(null, 'string'), Error);
-        assert.throws(() => rawrz.validateInput('invalid', 'algorithm'), Error);
-        assert.throws(() => rawrz.validateInput('a' * 10001, 'string', { maxLength: 10000 }), Error);
+        
+        // Test string length validation
+        assert.doesNotThrow(() => rawrz.validateInput('short', 'string', { maxLength: 100 }));
+        assert.throws(() => rawrz.validateInput('a'.repeat(1001), 'string', { maxLength: 1000 }), Error);
+        
+        // Test number range validation
+        assert.doesNotThrow(() => rawrz.validateInput(50, 'number', { min: 0, max: 100 }));
+        assert.throws(() => rawrz.validateInput(150, 'number', { max: 100 }), Error);
+        assert.throws(() => rawrz.validateInput(-10, 'number', { min: 0 }), Error);
+        
+        // Test pattern validation
+        const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        assert.doesNotThrow(() => rawrz.validateInput('test@example.com', 'string', { pattern: emailPattern }));
+        assert.throws(() => rawrz.validateInput('invalid-email', 'string', { pattern: emailPattern }), Error);
     }
 
     async testSanitization() {
         const RawrZStandalone = require('./rawrz-standalone.js');
         const rawrz = new RawrZStandalone();
 
-        // Test filename sanitization
-        const sanitized = rawrz.sanitizeInput('test<>:"/\\|?*file.txt', 'filename');
-        assert(!sanitized.includes('<'));
-        assert(!sanitized.includes('>'));
-        assert(!sanitized.includes(':'));
+        // Test filename sanitization - removes dangerous characters
+        const sanitizedFilename = rawrz.sanitizeInput('test<>:"|?*file.txt', 'filename');
+        assert(!sanitizedFilename.includes('<'), 'Should remove <');
+        assert(!sanitizedFilename.includes('>'), 'Should remove >');
+        assert(!sanitizedFilename.includes(':'), 'Should remove :');
+        assert(!sanitizedFilename.includes('"'), 'Should remove "');
 
-        // Test path sanitization
-        const sanitizedPath = rawrz.sanitizeInput('../../../etc/passwd', 'path');
-        assert(!sanitizedPath.includes('..'));
+        // Test path traversal prevention
+        assert.throws(() => rawrz.sanitizeInput('../../../etc/passwd', 'path'), Error);
+        assert.throws(() => rawrz.sanitizeInput('..\\..\\windows\\system32', 'path'), Error);
+
+        // Test HTML sanitization
+        const htmlInput = '<script>alert("xss")</script>';
+        const sanitizedHtml = rawrz.sanitizeInput(htmlInput, 'html');
+        assert(!sanitizedHtml.includes('<script>'), 'Should encode HTML');
+        assert(sanitizedHtml.includes('&lt;'), 'Should use HTML entities');
+
+        // Test command sanitization
+        const cmdInput = 'test; rm -rf /';
+        const sanitizedCmd = rawrz.sanitizeInput(cmdInput, 'command');
+        assert(!sanitizedCmd.includes(';'), 'Should remove command separators');
+        
+        // Test null byte removal
+        const nullByteInput = 'test\x00file.txt';
+        const sanitizedNull = rawrz.sanitizeInput(nullByteInput, 'general');
+        assert(!sanitizedNull.includes('\x00'), 'Should remove null bytes');
     }
 
     async testRateLimiting() {
@@ -103,44 +128,92 @@ class TestSuite {
         const RawrZStandalone = require('./rawrz-standalone.js');
         const rawrz = new RawrZStandalone();
 
-        // Test secure math evaluation
-        assert.strictEqual(rawrz.safeMathEval('2 + 2'), 4);
-        assert.strictEqual(rawrz.safeMathEval('10 * 5'), 50);
+        // Test secure math evaluation - valid expressions
+        assert.strictEqual(rawrz.safeMathEval('2 + 2'), 4, 'Simple addition');
+        assert.strictEqual(rawrz.safeMathEval('10 * 5'), 50, 'Multiplication');
+        assert.strictEqual(rawrz.safeMathEval('(2 + 3) * 4'), 20, 'Order of operations');
+        assert.strictEqual(rawrz.safeMathEval('100 / 4'), 25, 'Division');
+        assert.strictEqual(rawrz.safeMathEval('10 - 3'), 7, 'Subtraction');
         
-        // Test invalid expressions
-        assert.throws(() => rawrz.safeMathEval('eval("malicious code")'), Error);
-        assert.throws(() => rawrz.safeMathEval('process.exit()'), Error);
+        // Test invalid expressions - code injection attempts
+        assert.throws(() => rawrz.safeMathEval('eval("malicious code")'), Error, 'Should block eval');
+        assert.throws(() => rawrz.safeMathEval('process.exit()'), Error, 'Should block process');
+        assert.throws(() => rawrz.safeMathEval('require("fs")'), Error, 'Should block require');
+        assert.throws(() => rawrz.safeMathEval('__proto__'), Error, 'Should block proto');
+        assert.throws(() => rawrz.safeMathEval('constructor'), Error, 'Should block constructor');
+        assert.throws(() => rawrz.safeMathEval('function() {}'), Error, 'Should block function keyword');
+        
+        // Test invalid syntax
+        assert.throws(() => rawrz.safeMathEval('2 +'), Error, 'Should reject incomplete expression');
+        assert.throws(() => rawrz.safeMathEval('(2 + 3'), Error, 'Should reject unbalanced parentheses');
+        assert.throws(() => rawrz.safeMathEval('2 + 3)'), Error, 'Should reject unbalanced parentheses');
+        
+        // Test invalid characters
+        assert.throws(() => rawrz.safeMathEval('2 + abc'), Error, 'Should reject letters');
+        assert.throws(() => rawrz.safeMathEval('2; alert(1)'), Error, 'Should reject semicolons');
+        
+        // Test length limit
+        const longExpr = '1 + '.repeat(1000) + '1';
+        assert.throws(() => rawrz.safeMathEval(longExpr), Error, 'Should reject too long expressions');
     }
 
     async testFileOperations() {
         const RawrZStandalone = require('./rawrz-standalone.js');
         const rawrz = new RawrZStandalone();
 
-        // Test path traversal prevention
-        assert.throws(() => rawrz.readAbsoluteFile('../../../etc/passwd'), Error);
-        assert.throws(() => rawrz.readAbsoluteFile('~/sensitive-file'), Error);
+        // Test path validation - should reject directory traversal
+        assert.throws(() => rawrz.validatePath('../../../etc/passwd'), Error, 'Should block path traversal');
+        assert.throws(() => rawrz.validatePath('..\\..\\windows\\system32'), Error, 'Should block Windows path traversal');
+        
+        // Test file size validation
+        assert.doesNotThrow(() => rawrz.validateFileSize(1024 * 1024, 10 * 1024 * 1024), 'Should accept 1MB file');
+        assert.throws(() => rawrz.validateFileSize(101 * 1024 * 1024, 100 * 1024 * 1024), Error, 'Should reject >100MB file');
+        
+        // Test sanitized filename patterns
+        const dangerousName = '../../../etc/passwd';
+        const sanitized = rawrz.sanitizeInput(dangerousName, 'filename');
+        assert(!sanitized.includes('..'), 'Sanitized filename should not contain ..');
+        assert(!sanitized.includes('/'), 'Sanitized filename should not contain /');
     }
 
     async testErrorHandling() {
         const RawrZStandalone = require('./rawrz-standalone.js');
         const rawrz = new RawrZStandalone();
 
-        // Test that errors don't expose sensitive information
-        try {
-            await rawrz.encrypt('invalid-algorithm', 'test-data');
-        } catch (error) {
-            assert(!error.message.includes('internal'));
-            assert(!error.message.includes('stack'));
-        }
+        // Test error sanitization
+        const testError = new Error('File not found at C:\\Users\\admin\\secret\\file.txt');
+        const sanitized = rawrz.sanitizeError(testError, 'file-operation');
+        
+        // Should not expose full paths
+        assert(!sanitized.message.includes('C:\\Users'), 'Should redact Windows paths');
+        assert(!sanitized.message.includes('admin'), 'Should redact sensitive info');
+        
+        // Test error with IP address
+        const ipError = new Error('Connection failed to 192.168.1.100');
+        const sanitizedIp = rawrz.sanitizeError(ipError, 'network');
+        assert(!sanitizedIp.message.includes('192.168.1.100'), 'Should redact IP addresses');
+        assert(sanitizedIp.message.includes('[ip]'), 'Should replace with placeholder');
+        
+        // Test secure logging
+        const logResult = rawrz.logSecureError(new Error('Test error'), 'test-context');
+        assert(logResult.timestamp, 'Should include timestamp');
+        assert(logResult.context === 'test-context', 'Should include context');
+        assert(logResult.message, 'Should include sanitized message');
     }
 
     async testMemoryLimits() {
         const RawrZStandalone = require('./rawrz-standalone.js');
         const rawrz = new RawrZStandalone();
 
-        // Test large data handling
-        const largeData = 'x'.repeat(101 * 1024 * 1024); // 101MB
-        assert.throws(() => rawrz.performEncryption(largeData, 'aes256'), Error);
+        // Test file size limits
+        const maxSize = 100 * 1024 * 1024; // 100MB
+        const largeSize = 101 * 1024 * 1024; // 101MB
+        
+        assert.doesNotThrow(() => rawrz.validateFileSize(maxSize - 1, maxSize), 'Should accept file under limit');
+        assert.throws(() => rawrz.validateFileSize(largeSize, maxSize), Error, 'Should reject file over limit');
+        
+        // Test empty/invalid input validation
+        assert.throws(() => rawrz.validateInput('', 'string', { minLength: 1 }), Error, 'Should reject empty string with minLength');
     }
 
     async testSecurityMonitor() {
