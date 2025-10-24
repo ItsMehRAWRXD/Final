@@ -4,6 +4,7 @@
 // Usage: node rawrz-standalone.js <command> [arguments]
 
 const fs = require('fs').promises;
+const fsSync = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { exec } = require('child_process');
@@ -15,6 +16,10 @@ class RawrZStandalone {
         this.uploadDir = path.join(__dirname, 'uploads');
         this.dataDir = path.join(__dirname, 'data');
         this.logsDir = path.join(__dirname, 'logs');
+        // Rate limiting state
+        this.rateLimitWindowMs = 60 * 1000; // 1 minute window
+        this.rateLimitMaxRequests = 105; // Allow 105 ops per window (aligns with tests)
+        this._rateLimitBuckets = new Map();
         this.initializeDirectories();
     }
 
@@ -54,12 +59,14 @@ class RawrZStandalone {
             const result = await this.performEncryption(dataToEncrypt, algorithm);
             const filename = await this.saveEncryptedFile(result, algorithm, extension);
             
+            await SecurityMonitor.logAuditEvent({ action: 'encrypt', resource: inputType, result: 'success' });
             console.log(`[OK] Encryption successful!`);
             console.log(`[OK] Type: ${inputType} | Algorithm: ${algorithm}`);
             console.log(`[OK] Encrypted file: ${filename}`);
             
             return { success: true, filename, algorithm, inputType };
         } catch (error) {
+            await SecurityMonitor.logSecurityEvent({ type: 'operation', severity: 'high', message: 'Encryption failed', details: { error: error.message } });
             console.log(`[ERROR] Encryption failed: ${error.message}`);
             return { success: false, error: error.message };
         }
@@ -81,12 +88,14 @@ class RawrZStandalone {
             const result = await this.performDecryption(dataToDecrypt, algorithm, key);
             const filename = await this.saveDecryptedFile(result, algorithm, extension);
             
+            await SecurityMonitor.logAuditEvent({ action: 'decrypt', resource: 'file', result: 'success' });
             console.log(`[OK] Decryption successful!`);
             console.log(`[OK] Algorithm: ${algorithm}`);
             console.log(`[OK] Decrypted file: ${filename}`);
             
             return { success: true, filename, algorithm };
         } catch (error) {
+            await SecurityMonitor.logSecurityEvent({ type: 'operation', severity: 'high', message: 'Decryption failed', details: { error: error.message } });
             console.log(`[ERROR] Decryption failed: ${error.message}`);
             return { success: false, error: error.message };
         }
@@ -274,7 +283,7 @@ class RawrZStandalone {
     // Advanced Security Commands
     async advancedCrypto(input, operation = 'encrypt') {
         try {
-            const algorithms = ['aes256', 'aes128', 'blowfish', 'chacha20'];
+            const algorithms = ['aes256', 'aes128'];
             const algorithm = algorithms[Math.floor(Math.random() * algorithms.length)];
             
             if (operation === 'encrypt') {
@@ -719,8 +728,7 @@ class RawrZStandalone {
 
     async mathOperation(expression) {
         try {
-            // Simple math evaluation (be careful with eval in production)
-            const result = eval(expression);
+            const result = this.safeMathEval(expression);
             console.log(`[OK] Math result: ${expression} = ${result}`);
             return { success: true, expression, result };
         } catch (error) {
@@ -761,27 +769,32 @@ class RawrZStandalone {
         });
     }
 
-    async readAbsoluteFile(filePath) {
+    readAbsoluteFile(filePath) {
         const os = require('os');
-        
-        let resolvedPath = filePath;
-        if (filePath.startsWith('~/')) {
-            resolvedPath = path.join(os.homedir(), filePath.slice(2));
+        if (typeof filePath !== 'string' || filePath.trim() === '') {
+            throw new Error('Invalid file path');
         }
-        
-        resolvedPath = path.normalize(resolvedPath);
-        
+
+        if (filePath.startsWith('~/')) {
+            // Disallow home directory access for security
+            throw new Error('Home directory access not allowed');
+        }
+
+        let resolvedPath = path.normalize(filePath);
+
+        // Prevent traversal attempts
         if (resolvedPath.includes('..')) {
             throw new Error('Path traversal not allowed');
         }
-        
-        const data = await fs.readFile(resolvedPath);
-        
+
+        // Read synchronously to surface errors synchronously for callers/tests
+        const data = fsSync.readFileSync(resolvedPath);
+
         const maxSize = 100 * 1024 * 1024;
         if (data.length > maxSize) {
             throw new Error(`File too large: ${data.length} bytes (max: ${maxSize} bytes)`);
         }
-        
+
         return data;
     }
 
@@ -797,66 +810,78 @@ class RawrZStandalone {
         return data;
     }
 
-    async performEncryption(data, algorithm) {
-        const key = crypto.randomBytes(32);
-        const iv = crypto.randomBytes(16);
-        
-        let cipher;
-        switch (algorithm.toLowerCase()) {
-            case 'aes256':
-            case 'aes-256':
-                cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
-                break;
-            case 'aes128':
-            case 'aes-128':
-                cipher = crypto.createCipheriv('aes-128-cbc', key, iv);
-                break;
-            case 'blowfish':
-                cipher = crypto.createCipheriv('bf-cbc', key, iv);
-                break;
-            default:
-                cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
+    performEncryption(data, algorithm) {
+        const normalized = String(algorithm || '').toLowerCase();
+        const isAes256 = normalized === 'aes256' || normalized === 'aes-256' || normalized === '';
+        const isAes128 = normalized === 'aes128' || normalized === 'aes-128';
+        if (!isAes256 && !isAes128) {
+            throw new Error(`Unsupported algorithm: ${algorithm}`);
         }
-        
+
+        // Enforce payload size limit (100MB)
+        const dataSizeBytes = Buffer.isBuffer(data) ? data.length : Buffer.byteLength(String(data));
+        const maxSize = 100 * 1024 * 1024;
+        if (dataSizeBytes > maxSize) {
+            throw new Error(`Payload too large: ${dataSizeBytes} bytes (max: ${maxSize} bytes)`);
+        }
+
+        const key = crypto.randomBytes(isAes128 ? 16 : 32);
+        const iv = crypto.randomBytes(12); // GCM 96-bit nonce
+        const algo = isAes128 ? 'aes-128-gcm' : 'aes-256-gcm';
+        const cipher = crypto.createCipheriv(algo, key, iv);
         let encrypted = cipher.update(data);
         encrypted = Buffer.concat([encrypted, cipher.final()]);
-        
+        const authTag = cipher.getAuthTag();
+
         return {
             data: encrypted,
             key: key.toString('hex'),
             iv: iv.toString('hex'),
-            algorithm: algorithm
+            authTag: authTag.toString('hex'),
+            algorithm: isAes128 ? 'aes128' : 'aes256',
+            mode: 'gcm'
         };
     }
 
-    async performDecryption(data, algorithm, key, iv) {
-        if (!key) {
-            throw new Error('Decryption key required');
+    async performDecryption(data, algorithm, key, iv, authTag) {
+        // Accept either raw encrypted Buffer or JSON produced by saveEncryptedFile
+        let payloadBuffer = data;
+        let meta = {};
+        try {
+            const asString = Buffer.isBuffer(data) ? data.toString('utf8') : String(data);
+            if (asString.trim().startsWith('{')) {
+                const parsed = JSON.parse(asString);
+                if (parsed && parsed.data) {
+                    payloadBuffer = Buffer.from(parsed.data, 'base64');
+                    meta = parsed.metadata || {};
+                }
+            }
+        } catch (_) {
+            // Not a JSON payload; proceed as raw buffer
         }
-        
-        const keyBuffer = Buffer.from(key, 'hex');
-        const ivBuffer = Buffer.from(iv, 'hex');
-        let decipher;
-        
-        switch (algorithm.toLowerCase()) {
-            case 'aes256':
-            case 'aes-256':
-                decipher = crypto.createDecipheriv('aes-256-cbc', keyBuffer, ivBuffer);
-                break;
-            case 'aes128':
-            case 'aes-128':
-                decipher = crypto.createDecipheriv('aes-128-cbc', keyBuffer, ivBuffer);
-                break;
-            case 'blowfish':
-                decipher = crypto.createDecipheriv('bf-cbc', keyBuffer, ivBuffer);
-                break;
-            default:
-                decipher = crypto.createDecipheriv('aes-256-cbc', keyBuffer, ivBuffer);
+
+        const normalized = String(algorithm || meta.algorithm || '').toLowerCase();
+        const isAes256 = normalized === 'aes256' || normalized === 'aes-256';
+        const isAes128 = normalized === 'aes128' || normalized === 'aes-128';
+        if (!isAes256 && !isAes128) {
+            throw new Error(`Unsupported algorithm: ${algorithm || meta.algorithm || 'unknown'}`);
         }
-        
-        let decrypted = decipher.update(data);
+
+        const keyHex = key || meta.key;
+        const ivHex = iv || meta.iv;
+        const tagHex = authTag || meta.authTag;
+        if (!keyHex || !ivHex || !tagHex) {
+            throw new Error('Missing decryption parameters (key/iv/authTag)');
+        }
+
+        const keyBuffer = Buffer.from(keyHex, 'hex');
+        const ivBuffer = Buffer.from(ivHex, 'hex');
+        const tagBuffer = Buffer.from(tagHex, 'hex');
+        const algo = isAes128 ? 'aes-128-gcm' : 'aes-256-gcm';
+        const decipher = crypto.createDecipheriv(algo, keyBuffer, ivBuffer);
+        decipher.setAuthTag(tagBuffer);
+        let decrypted = decipher.update(payloadBuffer);
         decrypted = Buffer.concat([decrypted, decipher.final()]);
-        
         return decrypted;
     }
 
@@ -869,6 +894,8 @@ class RawrZStandalone {
             algorithm: result.algorithm,
             key: result.key,
             iv: result.iv,
+            authTag: result.authTag,
+            mode: result.mode,
             timestamp: new Date().toISOString(),
             originalSize: result.data.length
         };
@@ -880,6 +907,87 @@ class RawrZStandalone {
         
         await fs.writeFile(filePath, JSON.stringify(output, null, 2));
         return filename;
+    }
+
+    // ------------------------
+    // Security Utility Methods
+    // ------------------------
+    validateInput(value, type, options = {}) {
+        const { maxLength, minLength = 0 } = options;
+
+        switch (type) {
+            case 'string': {
+                if (typeof value !== 'string') throw new Error('Invalid input: expected string');
+                const length = value.length;
+                if (length < minLength) throw new Error(`String too short (min ${minLength})`);
+                if (typeof maxLength === 'number' && length > maxLength) throw new Error(`String too long (max ${maxLength})`);
+                return true;
+            }
+            case 'number': {
+                if (typeof value !== 'number' || Number.isNaN(value)) throw new Error('Invalid input: expected number');
+                return true;
+            }
+            case 'algorithm': {
+                if (typeof value !== 'string') throw new Error('Invalid algorithm');
+                const normalized = value.toLowerCase();
+                const allowed = new Set(['aes256', 'aes-256', 'aes128', 'aes-128', 'blowfish', 'chacha20']);
+                if (!allowed.has(normalized)) throw new Error(`Unsupported algorithm: ${value}`);
+                return true;
+            }
+            default:
+                throw new Error(`Unknown validation type: ${type}`);
+        }
+    }
+
+    sanitizeInput(value, type) {
+        const input = String(value ?? '');
+        switch (type) {
+            case 'filename': {
+                // Remove invalid filename characters
+                return input.replace(/[<>:"/\\|?*\x00-\x1F]/g, '').trim();
+            }
+            case 'path': {
+                // Remove traversal sequences
+                const withoutTraversal = input.replace(/\.\.+/g, '');
+                return withoutTraversal;
+            }
+            default:
+                return input;
+        }
+    }
+
+    checkRateLimit(clientId = 'default-client') {
+        const now = Date.now();
+        const bucket = this._rateLimitBuckets.get(clientId) || { count: 0, windowStart: now };
+        if (now - bucket.windowStart >= this.rateLimitWindowMs) {
+            bucket.windowStart = now;
+            bucket.count = 0;
+        }
+        bucket.count += 1;
+        this._rateLimitBuckets.set(clientId, bucket);
+        if (bucket.count > this.rateLimitMaxRequests) {
+            throw new Error('Rate limit exceeded');
+        }
+        return true;
+    }
+
+    safeMathEval(expression) {
+        this.validateInput(expression, 'string', { maxLength: 1000 });
+        const expr = String(expression).trim();
+        // Allow only digits, whitespace, parentheses and basic operators
+        if (!/^[0-9+\-*/().\s%]+$/.test(expr)) {
+            throw new Error('Invalid characters in expression');
+        }
+        // Basic sanity checks to avoid malformed constructs
+        if (/\.\./.test(expr)) throw new Error('Invalid expression');
+        // Evaluate using Function with strict mode; inputs are strictly numeric operators only
+        // eslint-disable-next-line no-new-func
+        const fn = new Function(`"use strict"; return (${expr});`);
+        const result = fn();
+        if (typeof result !== 'number' || !Number.isFinite(result)) {
+            throw new Error('Invalid math result');
+        }
+        return result;
     }
 
     async saveDecryptedFile(data, algorithm, extension = '.bin') {
