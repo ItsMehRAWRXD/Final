@@ -675,42 +675,104 @@ class RawrZStandalone {
                     isValid = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(input);
                     break;
                 case 'json':
-                    try {
-                        JSON.parse(input);
-                        isValid = true;
-                    } catch (e) {
-                        isValid = false;
-                    }
-                    break;
-                default:
-                    throw new Error(`Unknown validation type: ${type}`);
-            }
-            
-            console.log(`[OK] ${type} validation: ${isValid ? 'VALID' : 'INVALID'}`);
-            return { success: true, type, valid: isValid };
-        } catch (error) {
-            console.log(`[ERROR] Validation failed: ${error.message}`);
-            return { success: false, error: error.message };
-        }
-    }
-
-    // Time and Math Commands
+       // Time and Math Commands
     async getTime() {
         try {
             const now = new Date();
             const timeInfo = {
-                timestamp: now.getTime(),
+                utc: now.toUTCString(),
                 iso: now.toISOString(),
                 local: now.toString(),
-                utc: now.toUTCString()
+                timestamp: now.getTime()
             };
             
-            console.log(`[OK] Current time:`);
-            console.log(`[OK] Timestamp: ${timeInfo.timestamp}`);
+            console.log(`[OK] UTC: ${timeInfo.utc}`);
             console.log(`[OK] ISO: ${timeInfo.iso}`);
             console.log(`[OK] Local: ${timeInfo.local}`);
             
             return { success: true, time: timeInfo };
+        } catch (error) {
+            console.log(`[ERROR] Time operation failed: ${error.message}`);
+            return { success: false, error: error.message };
+        }
+    }
+
+    async mathOperation(expression) {
+        try {
+            // Secure math evaluation using safeMathEval
+            const result = this.safeMathEval(expression);
+            console.log(`[OK] Math result: ${expression} = ${result}`);
+            return { success: true, expression, result };
+        } catch (error) {
+            console.log(`[ERROR] Math operation failed: ${error.message}`);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // Secure math evaluation function to replace dangerous eval()
+    safeMathEval(expression) {
+        // Input validation
+        if (!expression || typeof expression !== 'string') {
+            throw new Error('Invalid expression: must be a non-empty string');
+        }
+
+        // Remove whitespace and validate characters
+        const cleanExpression = expression.replace(/\s/g, '');
+        
+        // Only allow safe mathematical characters and functions
+        const allowedPattern = /^[0-9+\-*/().\s,]+$/;
+        if (!allowedPattern.test(cleanExpression)) {
+            throw new Error('Invalid expression: contains unsafe characters');
+        }
+
+        // Check for dangerous patterns
+        const dangerousPatterns = [
+            /eval\s*\(/i,
+            /function\s*\(/i,
+            /=>/,
+            /process\./i,
+            /require\s*\(/i,
+            /import\s+/i,
+            /console\./i,
+            /global\./i,
+            /window\./i,
+            /document\./i,
+            /setTimeout\s*\(/i,
+            /setInterval\s*\(/i,
+            /new\s+Function/i,
+            /\.constructor/i,
+            /__proto__/i,
+            /prototype/i
+        ];
+
+        for (const pattern of dangerousPatterns) {
+            if (pattern.test(expression)) {
+                throw new Error('Invalid expression: contains potentially dangerous code');
+            }
+        }
+
+        // Use Function constructor for safer evaluation
+        try {
+            const func = new Function('return ' + cleanExpression);
+            const result = func();
+            
+            // Validate result is a number
+            if (typeof result !== 'number' || !isFinite(result)) {
+                throw new Error('Invalid expression: result is not a valid number');
+            }
+            
+            return result;
+        } catch (error) {
+            throw new Error(`Math evaluation failed: ${error.message}`);
+        }
+    }if (pattern.test(expression)) {
+                throw new Error('Invalid expression: contains potentially dangerous code');
+            }
+        }
+
+        // Use Function constructor for safer evaluation
+        try {
+            const func = new Functime: timeInfo };
         } catch (error) {
             console.log(`[ERROR] Time operation failed: ${error.message}`);
             return { success: false, error: error.message };
