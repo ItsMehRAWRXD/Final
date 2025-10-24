@@ -1,1 +1,3 @@
 {"id":"5dca3cb2-ab92-4e48-a88b-5c8bc873f348","timestamp":"2025-10-22T18:06:18.943Z","type":"authentication","severity":"high","message":"Failed login attempt","details":{},"source":"login-system","user":"system","ip":"unknown"}
+{"id":"70bfea90-4afb-4f84-b1d7-ac0a712d695c","timestamp":"2025-10-24T12:47:07.190Z","type":"authentication","severity":"high","message":"Failed login attempt","details":{},"source":"login-system","user":"system","ip":"unknown"}
+{"id":"aaed609a-4ba8-4b28-bcb3-b737ab15b4c5","timestamp":"2025-10-24T12:52:06.281Z","type":"authentication","severity":"high","message":"Failed login attempt","details":{},"source":"login-system","user":"system","ip":"unknown"}
