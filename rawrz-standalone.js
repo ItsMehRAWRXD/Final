@@ -61,7 +61,7 @@ class RawrZStandalone {
             return { success: true, filename, algorithm, inputType };
         } catch (error) {
             console.log(`[ERROR] Encryption failed: ${error.message}`);
-            return { success: false, error: error.message };
+            return { success: false, error: "Invalid mathematical expression" };
         }
     }
 
@@ -720,12 +720,58 @@ class RawrZStandalone {
     async mathOperation(expression) {
         try {
             // Simple math evaluation (be careful with eval in production)
-            const result = eval(expression);
+            const result = this.safeMathEval(expression);
             console.log(`[OK] Math result: ${expression} = ${result}`);
             return { success: true, expression, result };
         } catch (error) {
             console.log(`[ERROR] Math operation failed: ${error.message}`);
             return { success: false, error: error.message };
+        }
+    }
+
+
+    // SECURITY FIX: Secure math evaluation function to replace eval()
+    safeMathEval(expression) {
+        // Input validation
+        if (typeof expression !== 'string') {
+            throw new Error('Expression must be a string');
+        }
+        
+        if (expression.length > 1000) {
+            throw new Error('Expression too long');
+        }
+
+        // Sanitize expression - only allow numbers, operators, parentheses
+        const sanitized = expression.replace(/\s+/g, '');
+        const allowedPattern = /^[0-9+\-*/.()]+$/;
+        
+        if (!allowedPattern.test(sanitized)) {
+            throw new Error('Invalid characters in expression');
+        }
+
+        // Check for dangerous patterns
+        const dangerousPatterns = [
+            /eval/i, /function/i, /constructor/i, /prototype/i, 
+            /process/i, /require/i, /import/i, /export/i,
+            /global/i, /this/i, /window/i, /document/i
+        ];
+        
+        for (const pattern of dangerousPatterns) {
+            if (pattern.test(expression)) {
+                throw new Error('Potentially dangerous expression');
+            }
+        }
+
+        try {
+            // Use Function constructor with restricted context (safer than eval)
+            const func = new Function(`
+                "use strict";
+                return ${sanitized};
+            `);
+            
+            return func();
+        } catch (error) {
+            throw new Error('Invalid mathematical expression');
         }
     }
 
